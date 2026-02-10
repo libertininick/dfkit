@@ -13,23 +13,27 @@ class TestToMarkdownTable:
     """Test suite for to_markdown_table function."""
 
     def test_default_returns_markdown_string(self) -> None:
-        """Given DataFrame, When called with defaults, Then returns string with markdown table markers."""
+        """Given DataFrame, When called with defaults, Then returns string with markdown table markers and data."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
 
         # Act
         result = to_markdown_table(df)
 
-        # Assert - should be a string with markdown table markers
+        # Assert - should be a string with markdown table markers and actual data values
         with check:
             assert isinstance(result, str)
         with check:
             assert "|" in result
         with check:
             assert "---" in result
+        with check:
+            assert "1" in result
+        with check:
+            assert "6" in result
 
     def test_default_includes_all_columns(self) -> None:
-        """Given multi-column DataFrame, When called with defaults, Then all column names appear in output."""
+        """Given multi-column DataFrame, When called with defaults, Then all columns and data values appear."""
         # Arrange
         df = pl.DataFrame({
             "id": [1, 2, 3],
@@ -47,6 +51,13 @@ class TestToMarkdownTable:
             assert "name" in result
         with check:
             assert "score" in result
+        # Assert - actual data values appear in output
+        with check:
+            assert "Alice" in result
+        with check:
+            assert "Charlie" in result
+        with check:
+            assert "95.5" in result
 
     def test_columns_filter_includes_only_specified(self) -> None:
         """Given DataFrame with columns [a, b, c], When columns=["a", "c"], Then output contains only a and c."""

@@ -51,6 +51,12 @@ def to_markdown_table(
     Raises:
         ValueError: If any columns in the columns list do not exist in the DataFrame.
 
+    Note:
+        This function temporarily modifies global ``pl.Config`` state to render
+        the table.  It is **not thread-safe**: concurrent calls from different
+        threads may observe each other's configuration.  Use only from a single
+        thread (or protect calls with a lock).
+
     Examples:
         >>> df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
         >>> print(to_markdown_table(df, num_rows=3))
@@ -77,6 +83,6 @@ def to_markdown_table(
         tbl_hide_column_names=False,
         tbl_hide_dataframe_shape=True,
         tbl_rows=num_rows,
-        tbl_cols=-1 if columns is None else len(columns),
+        tbl_cols=df.width if columns is None else len(columns),
     ):
         return str(df)
