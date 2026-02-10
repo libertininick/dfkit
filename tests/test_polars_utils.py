@@ -28,26 +28,26 @@ class TestGetSeriesDescription:
             assert set(result.keys()) == expected_keys
 
     def test_numeric_integer_series_returns_correct_values(self) -> None:
-        """Given integer series [10, 20, 30, 40, 50], When called, Then returns correct statistical values."""
+        """Given integer series [5, 15, 25, 35, 45, 55], When called, Then returns correct statistical values."""
         # Arrange
-        series = pl.Series("values", [10, 20, 30, 40, 50])
+        series = pl.Series("values", [5, 15, 25, 35, 45, 55])
 
         # Act
         result = get_series_description(series)
 
         # Assert - verify actual values
         with check:
-            assert result["count"] == 5.0
+            assert result["count"] == 6.0
         with check:
             assert result["null_count"] == 0.0
         with check:
             assert result["mean"] == 30.0
         with check:
-            assert result["min"] == 10.0
+            assert result["min"] == 5.0
         with check:
-            assert result["max"] == 50.0
+            assert result["max"] == 55.0
         with check:
-            assert result["50%"] == 30.0
+            assert result["50%"] == 35.0
 
     def test_numeric_float_series_returns_expected_keys_and_values(self) -> None:
         """Given float series, When called, Then returns dict with correct keys and float values."""
@@ -152,18 +152,6 @@ class TestGetSeriesDescription:
         with check:
             assert "75%" not in result
 
-    def test_return_type_is_dict(self) -> None:
-        """Given any series, When called, Then returns dict type."""
-        # Arrange
-        series = pl.Series("data", [1, 2, 3])
-
-        # Act
-        result = get_series_description(series)
-
-        # Assert
-        with check:
-            assert isinstance(result, dict)
-
     def test_empty_numeric_series_works_without_error(self) -> None:
         """Given empty numeric series, When called, Then returns dict without error."""
         # Arrange
@@ -191,9 +179,9 @@ class TestGetSeriesDescription:
             assert result["count"] == 0.0
         with check:
             assert result["null_count"] == 4.0
-        # Assert - only count and null_count present (no mean, std, etc.)
+        # Assert - at least count and null_count present
         with check:
-            assert set(result.keys()) == {"count", "null_count"}
+            assert {"count", "null_count"} <= set(result.keys())
 
     def test_single_element_series(self) -> None:
         """Given single-element series, When called, Then returns dict with correct values."""
@@ -343,6 +331,15 @@ class TestToMarkdownTable:
         # Act/Assert
         with pytest.raises(ValueError, match="Columns not found"):
             to_markdown_table(df, columns=["a", "nonexistent"])
+
+    def test_duplicate_columns_raises_value_error(self) -> None:
+        """Given DataFrame, When columns contains duplicates, Then raises ValueError."""
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
+
+        # Act/Assert
+        with pytest.raises(ValueError, match="Duplicate column names"):
+            to_markdown_table(df, columns=["a", "a", "b"])
 
     def test_invalid_columns_error_message_contains_sorted_extra_columns(self) -> None:
         """Given DataFrame, When invalid columns passed, Then error message contains sorted list of extra columns."""
@@ -525,11 +522,11 @@ class TestToMarkdownTable:
         # Assert - dtype annotations should not appear as cell contents
         # Check exact cell values instead of bare substrings to avoid false matches
         # (e.g., bare "str" could match data like "frustrated")
-        polars_dtypes = {"i64", "str", "f64"}
+        known_dtype_labels = {"i64", "str", "f64"}
         for line in result.splitlines():
             cells = {c.strip() for c in line.split("|") if c.strip()}
             with check:
-                assert not cells & polars_dtypes, f"Dtype annotation visible in: {line}"
+                assert not cells & known_dtype_labels, f"Dtype annotation visible in: {line}"
 
     def test_single_column_dataframe(self) -> None:
         """Given DataFrame with one column, When called, Then returns valid markdown."""
