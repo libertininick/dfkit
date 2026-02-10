@@ -1,6 +1,8 @@
-"""Tests for polars_utils module: to_markdown_table function."""
+"""Tests for polars_utils module."""
 
 from __future__ import annotations
+
+from datetime import date, datetime
 
 import polars as pl
 import pytest
@@ -336,6 +338,177 @@ class TestToMarkdownTable:
             assert "888" in result
         with check:
             assert "777" in result
+
+    def test_empty_columns_list_selects_no_columns(self) -> None:
+        """Given DataFrame, When columns=[], Then returns markdown with no columns and no data rows."""
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
+
+        # Act
+        result = to_markdown_table(df, columns=[])
+
+        # Assert - no column headers or data should appear
+        with check:
+            assert "a" not in result
+        with check:
+            assert "b" not in result
+        data_row_count = _count_data_rows(result)
+        with check:
+            assert data_row_count == 0
+
+    def test_columns_with_sample_true(self) -> None:
+        """Given DataFrame, When columns and sample=True, Then sampled rows contain only specified columns."""
+        # Arrange
+        df = pl.DataFrame({
+            "id": list(range(100)),
+            "name": [f"item_{i}" for i in range(100)],
+            "value": list(range(100, 200)),
+        })
+
+        # Act
+        result = to_markdown_table(df, columns=["id", "value"], num_rows=5, sample=True, seed=42)
+
+        # Assert - only specified columns appear
+        lines = result.splitlines()
+        header_line = lines[0]
+        with check:
+            assert "id" in header_line
+        with check:
+            assert "value" in header_line
+        with check:
+            assert "name" not in header_line
+        # Assert - correct number of data rows
+        data_row_count = _count_data_rows(result)
+        with check:
+            assert data_row_count == 5
+
+    def test_bool_column_type(self) -> None:
+        """Given DataFrame with bool column, When called, Then bool values render correctly."""
+        # Arrange
+        df = pl.DataFrame({"flag": [True, False, True]})
+
+        # Act
+        result = to_markdown_table(df)
+
+        # Assert
+        with check:
+            assert "flag" in result
+        with check:
+            assert "true" in result
+        with check:
+            assert "false" in result
+        data_row_count = _count_data_rows(result)
+        with check:
+            assert data_row_count == 3
+
+    def test_date_column_type(self) -> None:
+        """Given DataFrame with date column, When called, Then date values render correctly."""
+        # Arrange
+        df = pl.DataFrame({"event_date": [date(2024, 1, 15), date(2024, 6, 30)]})
+
+        # Act
+        result = to_markdown_table(df)
+
+        # Assert
+        with check:
+            assert "event_date" in result
+        with check:
+            assert "2024-01-15" in result
+        with check:
+            assert "2024-06-30" in result
+
+    def test_datetime_column_type(self) -> None:
+        """Given DataFrame with datetime column, When called, Then datetime values render correctly."""
+        # Arrange
+        df = pl.DataFrame({"ts": [datetime(2024, 1, 15, 10, 30), datetime(2024, 6, 30, 23, 59)]})
+
+        # Act
+        result = to_markdown_table(df)
+
+        # Assert
+        with check:
+            assert "ts" in result
+        with check:
+            assert "2024-01-15" in result
+        with check:
+            assert "2024-06-30" in result
+
+    def test_float_with_nan_and_none(self) -> None:
+        """Given DataFrame with float NaN and None values, When called, Then renders without error."""
+        # Arrange
+        df = pl.DataFrame({"score": [1.5, float("nan"), None, 4.0]})
+
+        # Act
+        result = to_markdown_table(df)
+
+        # Assert
+        with check:
+            assert "score" in result
+        with check:
+            assert "1.5" in result
+        with check:
+            assert "4.0" in result
+        data_row_count = _count_data_rows(result)
+        with check:
+            assert data_row_count == 4
+
+    def test_null_values_across_types(self) -> None:
+        """Given DataFrame with null values in multiple typed columns, When called, Then renders without error."""
+        # Arrange
+        df = pl.DataFrame({
+            "int_col": [1, None, 3],
+            "str_col": ["a", None, "c"],
+            "float_col": [1.1, 2.2, None],
+        })
+
+        # Act
+        result = to_markdown_table(df)
+
+        # Assert - non-null values present
+        with check:
+            assert "int_col" in result
+        with check:
+            assert "str_col" in result
+        with check:
+            assert "float_col" in result
+        with check:
+            assert "1" in result
+        with check:
+            assert "c" in result
+        with check:
+            assert "2.2" in result
+        data_row_count = _count_data_rows(result)
+        with check:
+            assert data_row_count == 3
+
+    def test_diverse_column_types_together(self) -> None:
+        """Given DataFrame with bool, date, datetime, int, float, and str columns, When called, Then all render."""
+        # Arrange
+        df = pl.DataFrame({
+            "id": [1, 2],
+            "active": [True, False],
+            "score": [99.5, 87.3],
+            "label": ["alpha", "beta"],
+            "created": [date(2024, 3, 1), date(2024, 4, 15)],
+            "updated": [datetime(2024, 3, 1, 12, 0), datetime(2024, 4, 15, 8, 30)],
+        })
+
+        # Act
+        result = to_markdown_table(df)
+
+        # Assert - all columns present
+        for col in ("id", "active", "score", "label", "created", "updated"):
+            with check:
+                assert col in result
+        # Assert - sample data values present
+        with check:
+            assert "alpha" in result
+        with check:
+            assert "true" in result
+        with check:
+            assert "99.5" in result
+        with check:
+            assert "2024-03-01" in result
 
 
 def _count_data_rows(markdown: str) -> int:
