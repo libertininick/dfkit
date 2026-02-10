@@ -19,8 +19,8 @@ def get_series_description(
     Returns:
         dict[str, float | str]: A dictionary containing descriptive statistics.
     """
-    des = series.describe(percentiles=percentiles)
-    return dict(zip(des["statistic"], des["value"], strict=True))
+    series_description = series.describe(percentiles=percentiles)
+    return dict(zip(series_description["statistic"], series_description["value"], strict=True))
 
 
 def to_markdown_table(

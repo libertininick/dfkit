@@ -87,14 +87,11 @@ class TestToMarkdownTable:
         # Act
         result = to_markdown_table(df, columns=["c", "a"])
 
-        # Assert - columns in specified order
-        lines = result.splitlines()
-        header_line = lines[0]
-        # "c" should appear before "a" in the header
-        c_pos = header_line.index("c")
-        a_pos = header_line.index("a")
+        # Assert - columns in specified order by parsing pipe-delimited cells
+        header_line = result.splitlines()[0]
+        column_names = [c.strip() for c in header_line.split("|") if c.strip()]
         with check:
-            assert c_pos < a_pos
+            assert column_names == ["c", "a"]
 
     def test_invalid_columns_raises_value_error(self) -> None:
         """Given DataFrame with columns [a, b], When columns=["a", "nonexistent"], Then raises ValueError."""
@@ -280,15 +277,17 @@ class TestToMarkdownTable:
         # Act
         result = to_markdown_table(df)
 
-        # Assert - shape and dtype info should not appear
-        # Shape info typically looks like "shape: (2, 2)"
-        # Dtype info typically looks like "<i64>" or "i64"
+        # Assert - shape info should not appear
         with check:
             assert "shape:" not in result.lower()
-        with check:
-            assert "i64" not in result
-        with check:
-            assert "str" not in result
+        # Assert - dtype annotations should not appear as cell contents
+        # Check exact cell values instead of bare substrings to avoid false matches
+        # (e.g., bare "str" could match data like "frustrated")
+        polars_dtypes = {"i64", "str", "f64"}
+        for line in result.splitlines():
+            cells = {c.strip() for c in line.split("|") if c.strip()}
+            with check:
+                assert not cells & polars_dtypes, f"Dtype annotation visible in: {line}"
 
     def test_single_column_dataframe(self) -> None:
         """Given DataFrame with one column, When called, Then returns valid markdown."""
@@ -521,7 +520,8 @@ def _count_data_rows(markdown: str) -> int:
         int: Number of data rows (excluding header and separator).
     """
     lines = [line.strip() for line in markdown.strip().splitlines() if line.strip()]
-    # Lines with | that are not the separator (contains ---)
-    table_lines = [line for line in lines if line.startswith("|") and "---" not in line]
-    # Subtract header (1)
-    return max(0, len(table_lines) - 1)
+    table_lines = [line for line in lines if line.startswith("|")]
+    # Subtract 2: header row (always first) + separator row (always second)
+    # Using position instead of "---" content match avoids incorrectly filtering
+    # data rows that contain literal "---" as cell content
+    return max(0, len(table_lines) - 2)
