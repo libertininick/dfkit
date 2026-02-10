@@ -48,9 +48,6 @@ def to_markdown_table(
     Returns:
         str: Markdown-formatted table string.
 
-    Raises:
-        ValueError: If any columns in the columns list do not exist in the DataFrame.
-
     Note:
         This function temporarily modifies global ``pl.Config`` state to render
         the table.  It is **not thread-safe**: concurrent calls from different
@@ -66,10 +63,7 @@ def to_markdown_table(
         | 2 | 5 |
         | 3 | 6 |
     """
-    if columns is not None:
-        extra_columns = set(columns) - set(df.columns)
-        if extra_columns:
-            raise ValueError(f"Columns not found in DataFrame: {extra_columns}")
+    _validate_markdown_table_inputs(df, columns, num_rows, sample=sample, seed=seed)
 
     if sample:
         df = df.sample(n=min(num_rows, df.height), seed=seed)
@@ -86,3 +80,34 @@ def to_markdown_table(
         tbl_cols=df.width if columns is None else len(columns),
     ):
         return str(df)
+
+
+def _validate_markdown_table_inputs(
+    df: pl.DataFrame,
+    columns: list[str] | None,
+    num_rows: int,
+    *,
+    sample: bool,
+    seed: int | None,
+) -> None:
+    """Validate inputs for to_markdown_table.
+
+    Args:
+        df (pl.DataFrame): The DataFrame to validate against.
+        columns (list[str] | None): Column names to validate.
+        num_rows (int): Row count to validate.
+        sample (bool): Whether sampling is enabled.
+        seed (int | None): Random seed to validate.
+
+    Raises:
+        ValueError: If num_rows is less than 1, seed is provided without
+            sample=True, or any columns do not exist in the DataFrame.
+    """
+    if num_rows < 1:
+        raise ValueError(f"num_rows must be at least 1, got {num_rows}")
+    if seed is not None and not sample:
+        raise ValueError("seed is only used when sample=True")
+    if columns is not None:
+        extra_columns = set(columns) - set(df.columns)
+        if extra_columns:
+            raise ValueError(f"Columns not found in DataFrame: {sorted(extra_columns)}")

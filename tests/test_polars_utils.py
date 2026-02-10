@@ -103,20 +103,41 @@ class TestToMarkdownTable:
         with pytest.raises(ValueError, match="Columns not found"):
             to_markdown_table(df, columns=["a", "nonexistent"])
 
-    def test_invalid_columns_error_message_contains_extra_columns(self) -> None:
-        """Given DataFrame, When invalid columns passed, Then error message contains the set of extra columns."""
+    def test_invalid_columns_error_message_contains_sorted_extra_columns(self) -> None:
+        """Given DataFrame, When invalid columns passed, Then error message contains sorted list of extra columns."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
 
         # Act/Assert
         with pytest.raises(ValueError) as exc_info:
-            to_markdown_table(df, columns=["a", "nonexistent1", "nonexistent2"])
+            to_markdown_table(df, columns=["a", "nonexistent2", "nonexistent1"])
 
         error_message = str(exc_info.value)
         with check:
-            assert "nonexistent1" in error_message
-        with check:
-            assert "nonexistent2" in error_message
+            assert "['nonexistent1', 'nonexistent2']" in error_message
+
+    @pytest.mark.parametrize("num_rows", [0, -1, -10])
+    def test_num_rows_below_one_raises_value_error(self, num_rows: int) -> None:
+        """Given DataFrame, When num_rows < 1, Then raises ValueError.
+
+        Args:
+            num_rows (int): The invalid row count to test.
+        """
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2, 3]})
+
+        # Act/Assert
+        with pytest.raises(ValueError, match="num_rows must be at least 1"):
+            to_markdown_table(df, num_rows=num_rows)
+
+    def test_seed_without_sample_raises_value_error(self) -> None:
+        """Given DataFrame, When seed is provided without sample=True, Then raises ValueError."""
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2, 3]})
+
+        # Act/Assert
+        with pytest.raises(ValueError, match="seed is only used when sample=True"):
+            to_markdown_table(df, seed=42)
 
     def test_num_rows_limits_output(self) -> None:
         """Given DataFrame with 20 rows, When num_rows=5, Then output is truncated with ellipsis."""
