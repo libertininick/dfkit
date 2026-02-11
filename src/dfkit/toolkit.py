@@ -861,7 +861,7 @@ def _handle_column_validation_error(
         error_type="InvalidColumns",
         message=f"Invalid columns specified: {error}",
         details={
-            "available_columns": error.available_columns,
+            "available_columns": available_columns,
             "requested_columns": requested_columns,
             "invalid_columns": error.missing_columns,
         },

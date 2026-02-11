@@ -8,6 +8,7 @@ import polars as pl
 import pytest
 from pytest_check import check
 
+from dfkit.exceptions import ColumnsNotFoundError, DuplicateColumnsError
 from dfkit.polars_utils import get_series_description, to_markdown_table
 
 
@@ -323,22 +324,22 @@ class TestToMarkdownTable:
         with check:
             assert column_names == ["c", "a"]
 
-    def test_invalid_columns_raises_value_error(self) -> None:
-        """Given DataFrame with columns [a, b], When columns=["a", "nonexistent"], Then raises ValueError."""
+    def test_invalid_columns_raises_columns_not_found_error(self) -> None:
+        """Given DataFrame with columns [a, b], When columns=["a", "nonexistent"], Then raises ColumnsNotFoundError."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
 
         # Act/Assert
-        with pytest.raises(ValueError, match="Columns not found"):
+        with pytest.raises(ColumnsNotFoundError, match="Columns not found"):
             to_markdown_table(df, columns=["a", "nonexistent"])
 
-    def test_duplicate_columns_raises_value_error(self) -> None:
-        """Given DataFrame, When columns contains duplicates, Then raises ValueError."""
+    def test_duplicate_columns_raises_duplicate_columns_error(self) -> None:
+        """Given DataFrame, When columns contains duplicates, Then raises DuplicateColumnsError."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
 
         # Act/Assert
-        with pytest.raises(ValueError, match="Duplicate column names"):
+        with pytest.raises(DuplicateColumnsError, match="Duplicate column names"):
             to_markdown_table(df, columns=["a", "a", "b"])
 
     def test_invalid_columns_error_message_contains_sorted_extra_columns(self) -> None:
@@ -347,7 +348,7 @@ class TestToMarkdownTable:
         df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
 
         # Act/Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ColumnsNotFoundError) as exc_info:
             to_markdown_table(df, columns=["a", "nonexistent2", "nonexistent1"])
 
         error_message = str(exc_info.value)
