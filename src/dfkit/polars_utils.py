@@ -120,9 +120,13 @@ def _validate_columns(columns: Sequence[str], df_columns: Sequence[str]) -> None
         df_columns (Sequence[str]): Column names present in the DataFrame.
 
     Raises:
+        ValueError: If columns list is empty.
         DuplicateColumnsError: If columns contain duplicates.
         ColumnsNotFoundError: If any columns do not exist in the DataFrame.
     """
+    if len(columns) == 0:
+        msg = "columns list must not be empty; pass None to include all columns"
+        raise ValueError(msg)
     if len(columns) != len(set(columns)):
         raise DuplicateColumnsError(columns=list(columns))
     extra_columns = set(columns) - set(df_columns)
