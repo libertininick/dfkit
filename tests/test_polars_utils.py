@@ -242,28 +242,75 @@ class TestGetSeriesDescription:
             assert result["mean"] == 2_000_000.0
 
 
-class TestToMarkdownTable:
-    """Test suite for to_markdown_table function."""
+class TestToMarkdownTableValidation:
+    """Tests for to_markdown_table input validation and error handling."""
 
-    def test_default_returns_markdown_string(self) -> None:
-        """Given DataFrame, When called with defaults, Then returns string with markdown table markers and data."""
+    def test_invalid_columns_raises_columns_not_found_error(self) -> None:
+        """Given DataFrame with columns [a, b], When columns=["a", "nonexistent"], Then raises ColumnsNotFoundError."""
         # Arrange
-        df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
 
-        # Act
-        result = to_markdown_table(df)
+        # Act/Assert
+        with pytest.raises(ColumnsNotFoundError, match="Columns not found"):
+            to_markdown_table(df, columns=["a", "nonexistent"])
 
-        # Assert - should be a string with markdown table markers and actual data values
+    def test_duplicate_columns_raises_duplicate_columns_error(self) -> None:
+        """Given DataFrame, When columns contains duplicates, Then raises DuplicateColumnsError."""
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
+
+        # Act/Assert
+        with pytest.raises(DuplicateColumnsError, match="Duplicate column names"):
+            to_markdown_table(df, columns=["a", "a", "b"])
+
+    def test_invalid_columns_error_message_contains_sorted_extra_columns(self) -> None:
+        """Given DataFrame, When invalid columns passed, Then error message contains sorted list of extra columns."""
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
+
+        # Act/Assert
+        with pytest.raises(ColumnsNotFoundError) as exc_info:
+            to_markdown_table(df, columns=["a", "nonexistent2", "nonexistent1"])
+
+        error_message = str(exc_info.value)
         with check:
-            assert isinstance(result, str)
-        with check:
-            assert "|" in result
-        with check:
-            assert "---" in result
-        with check:
-            assert "1" in result
-        with check:
-            assert "6" in result
+            assert "['nonexistent1', 'nonexistent2']" in error_message
+
+    @pytest.mark.parametrize("num_rows", [0, -1, -10])
+    def test_num_rows_below_one_raises_value_error(self, num_rows: int) -> None:
+        """Given DataFrame, When num_rows < 1, Then raises ValueError.
+
+        Args:
+            num_rows (int): The invalid row count to test.
+        """
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2, 3]})
+
+        # Act/Assert
+        with pytest.raises(ValueError, match="num_rows must be at least 1"):
+            to_markdown_table(df, num_rows=num_rows)
+
+    def test_seed_without_sample_raises_value_error(self) -> None:
+        """Given DataFrame, When seed is provided without sample=True, Then raises ValueError."""
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2, 3]})
+
+        # Act/Assert
+        with pytest.raises(ValueError, match="seed is only used when sample=True"):
+            to_markdown_table(df, seed=42)
+
+    def test_empty_columns_list_raises_value_error(self) -> None:
+        """Given DataFrame, When columns=[], Then raises ValueError."""
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
+
+        # Act / Assert
+        with pytest.raises(ValueError, match="columns list must not be empty"):
+            to_markdown_table(df, columns=[])
+
+
+class TestToMarkdownTableColumns:
+    """Tests for to_markdown_table column selection behavior."""
 
     def test_default_includes_all_columns(self) -> None:
         """Given multi-column DataFrame, When called with defaults, Then all columns and data values appear."""
@@ -324,59 +371,35 @@ class TestToMarkdownTable:
         with check:
             assert column_names == ["c", "a"]
 
-    def test_invalid_columns_raises_columns_not_found_error(self) -> None:
-        """Given DataFrame with columns [a, b], When columns=["a", "nonexistent"], Then raises ColumnsNotFoundError."""
+    def test_columns_with_sample_true(self) -> None:
+        """Given DataFrame, When columns and sample=True, Then sampled rows contain only specified columns."""
         # Arrange
-        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
+        df = pl.DataFrame({
+            "id": list(range(100)),
+            "name": [f"item_{i}" for i in range(100)],
+            "value": list(range(100, 200)),
+        })
 
-        # Act/Assert
-        with pytest.raises(ColumnsNotFoundError, match="Columns not found"):
-            to_markdown_table(df, columns=["a", "nonexistent"])
+        # Act
+        result = to_markdown_table(df, columns=["id", "value"], num_rows=5, sample=True, seed=42)
 
-    def test_duplicate_columns_raises_duplicate_columns_error(self) -> None:
-        """Given DataFrame, When columns contains duplicates, Then raises DuplicateColumnsError."""
-        # Arrange
-        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
-
-        # Act/Assert
-        with pytest.raises(DuplicateColumnsError, match="Duplicate column names"):
-            to_markdown_table(df, columns=["a", "a", "b"])
-
-    def test_invalid_columns_error_message_contains_sorted_extra_columns(self) -> None:
-        """Given DataFrame, When invalid columns passed, Then error message contains sorted list of extra columns."""
-        # Arrange
-        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
-
-        # Act/Assert
-        with pytest.raises(ColumnsNotFoundError) as exc_info:
-            to_markdown_table(df, columns=["a", "nonexistent2", "nonexistent1"])
-
-        error_message = str(exc_info.value)
+        # Assert - only specified columns appear
+        lines = result.splitlines()
+        header_line = lines[0]
         with check:
-            assert "['nonexistent1', 'nonexistent2']" in error_message
+            assert "id" in header_line
+        with check:
+            assert "value" in header_line
+        with check:
+            assert "name" not in header_line
+        # Assert - correct number of data rows
+        data_row_count = _count_markdown_table_data_rows(result)
+        with check:
+            assert data_row_count == 5
 
-    @pytest.mark.parametrize("num_rows", [0, -1, -10])
-    def test_num_rows_below_one_raises_value_error(self, num_rows: int) -> None:
-        """Given DataFrame, When num_rows < 1, Then raises ValueError.
 
-        Args:
-            num_rows (int): The invalid row count to test.
-        """
-        # Arrange
-        df = pl.DataFrame({"a": [1, 2, 3]})
-
-        # Act/Assert
-        with pytest.raises(ValueError, match="num_rows must be at least 1"):
-            to_markdown_table(df, num_rows=num_rows)
-
-    def test_seed_without_sample_raises_value_error(self) -> None:
-        """Given DataFrame, When seed is provided without sample=True, Then raises ValueError."""
-        # Arrange
-        df = pl.DataFrame({"a": [1, 2, 3]})
-
-        # Act/Assert
-        with pytest.raises(ValueError, match="seed is only used when sample=True"):
-            to_markdown_table(df, seed=42)
+class TestToMarkdownTableSampling:
+    """Tests for to_markdown_table row limiting and sampling behavior."""
 
     def test_num_rows_limits_output(self) -> None:
         """Given DataFrame with 20 rows, When num_rows=5, Then output is truncated with ellipsis."""
@@ -387,7 +410,7 @@ class TestToMarkdownTable:
         result = to_markdown_table(df, num_rows=5)
 
         # Assert - output should be truncated (less than full 20 rows) and include ellipsis
-        data_row_count = _count_data_rows(result)
+        data_row_count = _count_markdown_table_data_rows(result)
         with check:
             assert data_row_count < 20, "Output should be truncated"
         with check:
@@ -402,7 +425,7 @@ class TestToMarkdownTable:
         result = to_markdown_table(df, num_rows=10)
 
         # Assert - all rows present
-        data_row_count = _count_data_rows(result)
+        data_row_count = _count_markdown_table_data_rows(result)
         with check:
             assert data_row_count == 3
 
@@ -415,7 +438,7 @@ class TestToMarkdownTable:
         result = to_markdown_table(df, num_rows=5, sample=True)
 
         # Assert
-        data_row_count = _count_data_rows(result)
+        data_row_count = _count_markdown_table_data_rows(result)
         with check:
             assert data_row_count == 5
 
@@ -467,47 +490,33 @@ class TestToMarkdownTable:
         result = to_markdown_table(df, num_rows=10, sample=True)
 
         # Assert - should contain all 3 rows
-        data_row_count = _count_data_rows(result)
+        data_row_count = _count_markdown_table_data_rows(result)
         with check:
             assert data_row_count == 3
 
-    def test_empty_dataframe(self) -> None:
-        """Given empty DataFrame (0 rows), When called, Then returns valid markdown with headers but no data rows."""
+
+class TestToMarkdownTableRendering:
+    """Tests for to_markdown_table output format and data type rendering."""
+
+    def test_default_returns_markdown_string(self) -> None:
+        """Given DataFrame, When called with defaults, Then returns string with markdown table markers and data."""
         # Arrange
-        df = pl.DataFrame({"col1": [], "col2": []}, schema={"col1": pl.Int64, "col2": pl.Int64})
+        df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
 
         # Act
         result = to_markdown_table(df)
 
-        # Assert - header present but no data rows
+        # Assert - should be a string with markdown table markers and actual data values
         with check:
-            assert "col1" in result
-        with check:
-            assert "col2" in result
+            assert isinstance(result, str)
         with check:
             assert "|" in result
         with check:
             assert "---" in result
-        data_row_count = _count_data_rows(result)
         with check:
-            assert data_row_count == 0
-
-    def test_empty_dataframe_with_sample(self) -> None:
-        """Given empty DataFrame, When sample=True, Then returns valid markdown with headers but no data rows."""
-        # Arrange
-        df = pl.DataFrame({"x": [], "y": []}, schema={"x": pl.Float64, "y": pl.Float64})
-
-        # Act
-        result = to_markdown_table(df, sample=True)
-
-        # Assert - should not error, returns empty table with headers
+            assert "1" in result
         with check:
-            assert "x" in result
-        with check:
-            assert "y" in result
-        data_row_count = _count_data_rows(result)
-        with check:
-            assert data_row_count == 0
+            assert "6" in result
 
     def test_hides_shape_and_dtypes(self) -> None:
         """Given DataFrame, When called, Then output does not contain shape info or dtype annotations."""
@@ -546,7 +555,7 @@ class TestToMarkdownTable:
             assert "|" in result
         with check:
             assert "---" in result
-        data_row_count = _count_data_rows(result)
+        data_row_count = _count_markdown_table_data_rows(result)
         with check:
             assert data_row_count == 3
 
@@ -567,7 +576,7 @@ class TestToMarkdownTable:
             assert "b" in result
         with check:
             assert "c" in result
-        data_row_count = _count_data_rows(result)
+        data_row_count = _count_markdown_table_data_rows(result)
         with check:
             assert data_row_count == 1
         # The single data row should contain the values
@@ -578,40 +587,43 @@ class TestToMarkdownTable:
         with check:
             assert "777" in result
 
-    def test_empty_columns_list_raises_value_error(self) -> None:
-        """Given DataFrame, When columns=[], Then raises ValueError."""
+    def test_empty_dataframe(self) -> None:
+        """Given empty DataFrame (0 rows), When called, Then returns valid markdown with headers but no data rows."""
         # Arrange
-        df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
-
-        # Act / Assert
-        with pytest.raises(ValueError, match="columns list must not be empty"):
-            to_markdown_table(df, columns=[])
-
-    def test_columns_with_sample_true(self) -> None:
-        """Given DataFrame, When columns and sample=True, Then sampled rows contain only specified columns."""
-        # Arrange
-        df = pl.DataFrame({
-            "id": list(range(100)),
-            "name": [f"item_{i}" for i in range(100)],
-            "value": list(range(100, 200)),
-        })
+        df = pl.DataFrame({"col1": [], "col2": []}, schema={"col1": pl.Int64, "col2": pl.Int64})
 
         # Act
-        result = to_markdown_table(df, columns=["id", "value"], num_rows=5, sample=True, seed=42)
+        result = to_markdown_table(df)
 
-        # Assert - only specified columns appear
-        lines = result.splitlines()
-        header_line = lines[0]
+        # Assert - header present but no data rows
         with check:
-            assert "id" in header_line
+            assert "col1" in result
         with check:
-            assert "value" in header_line
+            assert "col2" in result
         with check:
-            assert "name" not in header_line
-        # Assert - correct number of data rows
-        data_row_count = _count_data_rows(result)
+            assert "|" in result
         with check:
-            assert data_row_count == 5
+            assert "---" in result
+        data_row_count = _count_markdown_table_data_rows(result)
+        with check:
+            assert data_row_count == 0
+
+    def test_empty_dataframe_with_sample(self) -> None:
+        """Given empty DataFrame, When sample=True, Then returns valid markdown with headers but no data rows."""
+        # Arrange
+        df = pl.DataFrame({"x": [], "y": []}, schema={"x": pl.Float64, "y": pl.Float64})
+
+        # Act
+        result = to_markdown_table(df, sample=True)
+
+        # Assert - should not error, returns empty table with headers
+        with check:
+            assert "x" in result
+        with check:
+            assert "y" in result
+        data_row_count = _count_markdown_table_data_rows(result)
+        with check:
+            assert data_row_count == 0
 
     def test_bool_column_type(self) -> None:
         """Given DataFrame with bool column, When called, Then bool values render correctly."""
@@ -628,7 +640,7 @@ class TestToMarkdownTable:
             assert "true" in result
         with check:
             assert "false" in result
-        data_row_count = _count_data_rows(result)
+        data_row_count = _count_markdown_table_data_rows(result)
         with check:
             assert data_row_count == 3
 
@@ -679,7 +691,7 @@ class TestToMarkdownTable:
             assert "1.5" in result
         with check:
             assert "4.0" in result
-        data_row_count = _count_data_rows(result)
+        data_row_count = _count_markdown_table_data_rows(result)
         with check:
             assert data_row_count == 4
 
@@ -708,7 +720,7 @@ class TestToMarkdownTable:
             assert "c" in result
         with check:
             assert "2.2" in result
-        data_row_count = _count_data_rows(result)
+        data_row_count = _count_markdown_table_data_rows(result)
         with check:
             assert data_row_count == 3
 
@@ -742,7 +754,7 @@ class TestToMarkdownTable:
             assert "2024-03-01" in result
 
 
-def _count_data_rows(markdown: str) -> int:
+def _count_markdown_table_data_rows(markdown: str) -> int:
     """Count data rows in markdown output.
 
     Args:
