@@ -727,7 +727,7 @@ class TestViewAsMarkdownTable:
         return DataFrameToolkit()
 
     def test_view_by_name_returns_string(self, toolkit: DataFrameToolkit) -> None:
-        """Given registered DataFrame, When view_as_markdown_table by name, Then returns markdown table string.
+        """Given registered DataFrame, When view_as_markdown_table by name, Then returns markdown table with data.
 
         Args:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
@@ -743,12 +743,18 @@ class TestViewAsMarkdownTable:
         with check:
             assert isinstance(result, str)
         with check:
-            assert "|" in result  # Markdown table contains pipe characters
+            assert "|" in result
         with check:
-            assert "---" in result  # Markdown table contains header separator
+            assert "---" in result
+        with check:
+            assert "10" in result
+        with check:
+            assert "20" in result
+        with check:
+            assert "30" in result
 
     def test_view_by_id_returns_string(self, toolkit: DataFrameToolkit) -> None:
-        """Given registered DataFrame, When view_as_markdown_table by ID, Then returns markdown table string.
+        """Given registered DataFrame, When view_as_markdown_table by ID, Then returns markdown table with data.
 
         Args:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
@@ -764,9 +770,15 @@ class TestViewAsMarkdownTable:
         with check:
             assert isinstance(result, str)
         with check:
-            assert "|" in result  # Markdown table contains pipe characters
+            assert "|" in result
         with check:
-            assert "---" in result  # Markdown table contains header separator
+            assert "---" in result
+        with check:
+            assert "10" in result
+        with check:
+            assert "20" in result
+        with check:
+            assert "30" in result
 
     def test_view_not_found_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
         """Given empty toolkit, When view_as_markdown_table with nonexistent identifier, Then returns ToolCallError.
@@ -892,8 +904,117 @@ class TestViewAsMarkdownTable:
         with check:
             assert set(invalid) == {"nonexistent", "missing"}
 
+    def test_view_with_duplicate_columns_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When columns contain duplicates, Then returns ToolCallError with DuplicateColumns.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", columns=["id", "id"])
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "DuplicateColumns"
+        with check:
+            assert "duplicate_columns" in result.details
+        with check:
+            assert result.details["duplicate_columns"] == ["id"]
+        with check:
+            assert result.details["requested_columns"] == ["id", "id"]
+
+    def test_view_with_num_rows_zero_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When num_rows=0, Then returns ToolCallError with InvalidArgument.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=0)
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidArgument"
+        with check:
+            assert "num_rows" in result.message
+
+    def test_view_with_negative_num_rows_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When num_rows=-1, Then returns ToolCallError with InvalidArgument.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=-1)
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidArgument"
+
+    def test_view_with_num_rows_exceeding_dataframe_size(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame with 3 rows, When num_rows=100, Then returns all rows without error.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=100)
+
+        # Assert
+        with check:
+            assert isinstance(result, str)
+        with check:
+            assert "10" in result
+        with check:
+            assert "20" in result
+        with check:
+            assert "30" in result
+
+    def test_view_with_empty_columns_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When columns=[], Then returns ToolCallError with InvalidArgument.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", columns=[])
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidArgument"
+        with check:
+            assert "empty" in result.message
+
     def test_view_with_num_rows(self, toolkit: DataFrameToolkit) -> None:
-        """Given DataFrame with 20 rows, When num_rows=5, Then result respects num_rows limit.
+        """Given DataFrame with 20 rows, When num_rows=5, Then result shows 5 data rows plus ellipsis.
 
         Args:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
@@ -906,8 +1027,7 @@ class TestViewAsMarkdownTable:
         result = toolkit.view_as_markdown_table("data", num_rows=5)
 
         # Assert
-        with check:
-            assert isinstance(result, str)
+        assert isinstance(result, str)
         with check:
             assert "|" in result
         with check:
@@ -915,6 +1035,12 @@ class TestViewAsMarkdownTable:
         # When num_rows < total rows, table should include ellipsis indicator
         with check:
             assert "…" in result or "..." in result
+        # Verify row count: header + separator + 5 data rows + ellipsis row = content lines with pipes
+        data_lines = [line for line in result.strip().split("\n") if line.strip().startswith("|")]
+        # Subtract header and separator lines
+        content_rows = len(data_lines) - 2
+        with check:
+            assert content_rows <= 6  # 5 data rows + possibly 1 ellipsis row
 
     def test_view_with_sample(self, toolkit: DataFrameToolkit) -> None:
         """Given DataFrame with 100 rows, When sample=True, num_rows=5, Then returns string (smoke test).

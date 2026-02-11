@@ -577,22 +577,14 @@ class TestToMarkdownTable:
         with check:
             assert "777" in result
 
-    def test_empty_columns_list_selects_no_columns(self) -> None:
-        """Given DataFrame, When columns=[], Then returns markdown with no columns and no data rows."""
+    def test_empty_columns_list_raises_value_error(self) -> None:
+        """Given DataFrame, When columns=[], Then raises ValueError."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
 
-        # Act
-        result = to_markdown_table(df, columns=[])
-
-        # Assert - no column headers or data should appear
-        with check:
-            assert "a" not in result
-        with check:
-            assert "b" not in result
-        data_row_count = _count_data_rows(result)
-        with check:
-            assert data_row_count == 0
+        # Act / Assert
+        with pytest.raises(ValueError, match="columns list must not be empty"):
+            to_markdown_table(df, columns=[])
 
     def test_columns_with_sample_true(self) -> None:
         """Given DataFrame, When columns and sample=True, Then sampled rows contain only specified columns."""
