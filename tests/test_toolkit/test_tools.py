@@ -1041,7 +1041,7 @@ class TestViewAsMarkdownTable:
         # Subtract header and separator lines
         content_rows = len(data_lines) - 2
         with check:
-            assert content_rows <= 6  # 5 data rows + possibly 1 ellipsis row
+            assert content_rows <= 6  # 5 data + 1 ellipsis
 
     def test_view_with_sample(self, toolkit: DataFrameToolkit) -> None:
         """Given DataFrame with 100 rows, When sample=True, num_rows=5, Then returns string (smoke test).
