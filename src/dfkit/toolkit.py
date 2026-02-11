@@ -512,6 +512,9 @@ class DataFrameToolkit:
             str | ToolCallError: Markdown-formatted table string, or ToolCallError
                 if the DataFrame is not found or columns are invalid.
 
+        Raises:
+            ValueError: If wrong exception is raised.
+
         Examples:
             >>> import polars as pl
             >>> toolkit = DataFrameToolkit()
@@ -538,6 +541,11 @@ class DataFrameToolkit:
                 seed=seed,
             )
         except (ColumnsNotFoundError, DuplicateColumnsError) as e:
+            if columns is None:
+                raise ValueError(
+                    "ColumnsNotFoundError | DuplicateColumnsError raised but columns=None."
+                    "These exceptions only raised when columns provided"
+                ) from None
             return _handle_column_validation_error(e, columns, df.columns)
         except ValueError as e:
             return ToolCallError(
@@ -826,7 +834,7 @@ class DataFrameToolkit:
 
 def _handle_column_validation_error(
     error: ColumnsNotFoundError | DuplicateColumnsError,
-    requested_columns: list[str] | None,
+    requested_columns: list[str],
     available_columns: list[str],
 ) -> ToolCallError:
     """Convert a column validation error to a ToolCallError.
@@ -834,7 +842,7 @@ def _handle_column_validation_error(
     Args:
         error (ColumnsNotFoundError | DuplicateColumnsError): The column
             validation error raised by to_markdown_table.
-        requested_columns (list[str] | None): The columns that were requested.
+        requested_columns (list[str]): The columns that were requested.
         available_columns (list[str]): The columns available in the DataFrame.
 
     Returns:
