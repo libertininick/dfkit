@@ -844,12 +844,15 @@ class TestViewAsMarkdownTable:
         # Assert
         with check:
             assert isinstance(result, str)
+        assert isinstance(result, str)
+        header_line = result.strip().split("\n")[0]
+        header_cols = [col.strip() for col in header_line.strip("|").split("|")]
         with check:
-            assert "| a |" in result or "|  a  |" in result  # Column a in header
+            assert "a" in header_cols
         with check:
-            assert "| c |" in result or "|  c  |" in result  # Column c in header
+            assert "c" in header_cols
         with check:
-            assert "| b |" not in result  # Column b not in header
+            assert "b" not in header_cols
 
     def test_view_with_invalid_columns_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
         """Given DataFrame, When columns contain nonexistent column, Then returns ToolCallError.
@@ -1084,6 +1087,82 @@ class TestViewAsMarkdownTable:
             assert isinstance(result2, str)
         with check:
             assert result1 == result2  # Same seed produces same result
+
+    def test_view_with_seed_without_sample_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When seed provided without sample=True, Then returns ToolCallError.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"name": ["Alice", "Bob"], "score": [95.5, 87.3]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", seed=42)
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidArgument"
+        with check:
+            assert "seed" in result.message
+        with check:
+            assert result.details["seed"] == 42
+        with check:
+            assert result.details["sample"] is False
+
+    def test_view_with_num_rows_equal_to_dataframe_size(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame with 3 rows, When num_rows=3, Then returns all rows without ellipsis.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"city": ["NYC", "LA", "CHI"], "pop": [8_336_817, 3_979_576, 2_693_976]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=3)
+
+        # Assert
+        assert isinstance(result, str)
+        with check:
+            assert "NYC" in result
+        with check:
+            assert "LA" in result
+        with check:
+            assert "CHI" in result
+        with check:
+            assert "…" not in result and "..." not in result
+
+    def test_view_with_varied_data_types(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame with strings, nulls, and large numbers, When viewed, Then renders correctly.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({
+            "label": ["hello world", None, "special: <>&\"'"],
+            "amount": [0, 999_999_999, -42],
+        })
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data")
+
+        # Assert
+        assert isinstance(result, str)
+        with check:
+            assert "hello world" in result
+        with check:
+            assert "null" in result
+        with check:
+            assert "999999999" in result
+        with check:
+            assert "-42" in result
 
     def test_view_tool_invoke(self, toolkit: DataFrameToolkit) -> None:
         """Given toolkit, When view_as_markdown_table tool invoked via LangChain, Then returns markdown string.

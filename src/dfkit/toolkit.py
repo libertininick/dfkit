@@ -524,10 +524,9 @@ class DataFrameToolkit:
             >>> isinstance(result, str)
             True
         """
-        result = self._get_dataframe(identifier)
-        if isinstance(result, ToolCallError):
-            return result
-        df = result
+        df = self._get_dataframe(identifier)
+        if isinstance(df, ToolCallError):
+            return df
 
         # Convert to markdown table, catching validation errors
         try:
@@ -544,7 +543,11 @@ class DataFrameToolkit:
             return ToolCallError(
                 error_type="InvalidArgument",
                 message=str(e),
-                details={},
+                details={
+                    "num_rows": num_rows,
+                    "sample": sample,
+                    "seed": seed,
+                },
             )
 
     def export_state(self) -> DataFrameToolkitState:
@@ -660,7 +663,7 @@ class DataFrameToolkit:
 
         Resolves the identifier to a reference, then fetches the actual
         DataFrame from the SQL context. Returns ToolCallError if the
-        identifier or DataFrame cannot be found.
+        identifier cannot be found.
 
         Args:
             identifier (str): Either the DataFrame name or its ID (df_xxxxxxxx).
@@ -668,6 +671,11 @@ class DataFrameToolkit:
         Returns:
             pl.DataFrame | ToolCallError: The resolved DataFrame, or
                 ToolCallError if not found.
+
+        Raises:
+            RuntimeError: If the reference resolves in the registry but the
+                DataFrame is missing from the SQL context (internal invariant
+                violation).
         """
         resolved = self._resolve_reference(identifier)
         if isinstance(resolved, ToolCallError):
@@ -676,11 +684,11 @@ class DataFrameToolkit:
         try:
             df = self._registry.context.get_dataframe(resolved.id)
         except KeyError:
-            return ToolCallError(
-                error_type="DataFrameNotFound",
-                message=f"DataFrame '{resolved.id}' not found in SQL context",
-                details={"identifier": identifier, "resolved_id": resolved.id},
+            msg = (
+                f"DataFrame '{resolved.id}' resolved in registry but missing "
+                f"from SQL context (identifier={identifier!r})"
             )
+            raise RuntimeError(msg) from None
 
         if isinstance(df, pl.LazyFrame):
             df = df.collect()
@@ -841,7 +849,7 @@ def _handle_column_validation_error(
             seen.add(col)
         return ToolCallError(
             error_type="DuplicateColumns",
-            message=f"Duplicate column names specified: {error}",
+            message=str(error),
             details={
                 "available_columns": available_columns,
                 "requested_columns": requested_columns,
@@ -849,15 +857,12 @@ def _handle_column_validation_error(
             },
         )
 
-    invalid_cols = []
-    if requested_columns is not None:
-        invalid_cols = [col for col in requested_columns if col not in available_columns]
     return ToolCallError(
         error_type="InvalidColumns",
         message=f"Invalid columns specified: {error}",
         details={
-            "available_columns": available_columns,
+            "available_columns": error.available_columns,
             "requested_columns": requested_columns,
-            "invalid_columns": invalid_cols if invalid_cols else None,
+            "invalid_columns": error.missing_columns,
         },
     )
