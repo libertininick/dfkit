@@ -733,7 +733,7 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = pl.DataFrame({"product": ["Widget", "Gadget", "Gizmo"], "price": [4.99, 12.50, 7.25]})
         toolkit.register_dataframe("sales", df)
 
         # Act
@@ -747,11 +747,11 @@ class TestViewAsMarkdownTable:
         with check:
             assert "---" in result
         with check:
-            assert "10" in result
+            assert "Widget" in result
         with check:
-            assert "20" in result
+            assert "12.5" in result
         with check:
-            assert "30" in result
+            assert "Gizmo" in result
 
     def test_view_by_id_returns_string(self, toolkit: DataFrameToolkit) -> None:
         """Given registered DataFrame, When view_as_markdown_table by ID, Then returns markdown table with data.
@@ -760,7 +760,7 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = pl.DataFrame({"city": ["Oslo", "Lima", "Cairo"], "temp_c": [-5, 22, 35]})
         ref = toolkit.register_dataframe("sales", df)
 
         # Act
@@ -774,11 +774,11 @@ class TestViewAsMarkdownTable:
         with check:
             assert "---" in result
         with check:
-            assert "10" in result
+            assert "Oslo" in result
         with check:
-            assert "20" in result
+            assert "22" in result
         with check:
-            assert "30" in result
+            assert "35" in result
 
     def test_view_not_found_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
         """Given empty toolkit, When view_as_markdown_table with nonexistent identifier, Then returns ToolCallError.
@@ -859,7 +859,7 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = pl.DataFrame({"name": ["Ava", "Ben", "Cal"], "age": [28, 34, 45]})
         toolkit.register_dataframe("data", df)
 
         # Act
@@ -878,11 +878,11 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = pl.DataFrame({"color": ["red", "blue", "green"], "hex": ["#FF0000", "#0000FF", "#00FF00"]})
         toolkit.register_dataframe("data", df)
 
         # Act
-        result = toolkit.view_as_markdown_table("data", columns=["id", "nonexistent", "missing"])
+        result = toolkit.view_as_markdown_table("data", columns=["color", "nonexistent", "missing"])
 
         # Assert
         with check:
@@ -892,11 +892,11 @@ class TestViewAsMarkdownTable:
         available_columns = result.details["available_columns"]
         assert isinstance(available_columns, list)
         with check:
-            assert set(available_columns) == {"id", "value"}
+            assert set(available_columns) == {"color", "hex"}
         with check:
             assert "requested_columns" in result.details
         with check:
-            assert result.details["requested_columns"] == ["id", "nonexistent", "missing"]
+            assert result.details["requested_columns"] == ["color", "nonexistent", "missing"]
         with check:
             assert "invalid_columns" in result.details
         invalid = result.details["invalid_columns"]
@@ -912,11 +912,11 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = pl.DataFrame({"sku": ["A1", "B2", "C3"], "qty": [50, 120, 75]})
         toolkit.register_dataframe("data", df)
 
         # Act
-        result = toolkit.view_as_markdown_table("data", columns=["id", "id"])
+        result = toolkit.view_as_markdown_table("data", columns=["sku", "sku"])
 
         # Assert
         with check:
@@ -926,9 +926,9 @@ class TestViewAsMarkdownTable:
         with check:
             assert "duplicate_columns" in result.details
         with check:
-            assert result.details["duplicate_columns"] == ["id"]
+            assert result.details["duplicate_columns"] == ["sku"]
         with check:
-            assert result.details["requested_columns"] == ["id", "id"]
+            assert result.details["requested_columns"] == ["sku", "sku"]
 
     def test_view_with_num_rows_zero_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
         """Given DataFrame, When num_rows=0, Then returns ToolCallError with InvalidArgument.
@@ -937,7 +937,7 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = pl.DataFrame({"item": ["pen", "book", "tape"], "cost": [1.50, 8.99, 3.25]})
         toolkit.register_dataframe("data", df)
 
         # Act
@@ -958,7 +958,7 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = pl.DataFrame({"fruit": ["apple", "banana", "cherry"], "count": [12, 7, 25]})
         toolkit.register_dataframe("data", df)
 
         # Act
@@ -977,7 +977,7 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = pl.DataFrame({"country": ["Japan", "Brazil", "Kenya"], "code": ["JP", "BR", "KE"]})
         toolkit.register_dataframe("data", df)
 
         # Act
@@ -987,11 +987,11 @@ class TestViewAsMarkdownTable:
         with check:
             assert isinstance(result, str)
         with check:
-            assert "10" in result
+            assert "Japan" in result
         with check:
-            assert "20" in result
+            assert "BR" in result
         with check:
-            assert "30" in result
+            assert "Kenya" in result
 
     def test_view_with_empty_columns_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
         """Given DataFrame, When columns=[], Then returns ToolCallError with InvalidArgument.
@@ -1000,7 +1000,7 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = pl.DataFrame({"dept": ["HR", "Eng", "Sales"], "budget": [50000, 120000, 80000]})
         toolkit.register_dataframe("data", df)
 
         # Act
@@ -1169,7 +1169,7 @@ class TestViewAsMarkdownTable:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
         """
         # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "amount": [100, 200, 300]})
+        df = pl.DataFrame({"region": ["North", "South", "East"], "revenue": [4500, 3200, 5800]})
         toolkit.register_dataframe("sales", df)
 
         # Act
