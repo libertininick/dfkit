@@ -27,7 +27,7 @@ Design Note - ID as Primary Key:
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import polars as pl
 from langchain_core.tools import BaseTool, tool
@@ -486,7 +486,7 @@ class DataFrameToolkit:
     def view_as_markdown_table(
         self,
         identifier: str,
-        columns: list[str] | None = None,
+        columns: Sequence[str] | None = None,
         num_rows: int = 10,
         *,
         sample: bool = False,
@@ -506,8 +506,8 @@ class DataFrameToolkit:
 
         Args:
             identifier (str): Either the DataFrame name or its ID (df_xxxxxxxx).
-            columns (list[str] | None): Optional list of column names to display.
-                If None, all columns are shown. Defaults to None.
+            columns (Sequence[str] | None): Optional sequence of column names to
+                display. If None, all columns are shown. Defaults to None.
             num_rows (int): Maximum number of rows to display. Must be at least 1.
                 Defaults to 10.
             sample (bool): If True, randomly sample rows instead of taking the
@@ -551,6 +551,7 @@ class DataFrameToolkit:
                 error_type="InvalidArgument",
                 message=str(e),
                 details={
+                    "columns": list(columns) if columns is not None else None,
                     "num_rows": num_rows,
                     "sample": sample,
                     "seed": seed,
@@ -833,16 +834,18 @@ class DataFrameToolkit:
 
 def _handle_column_validation_error(
     error: ColumnsNotFoundError | DuplicateColumnsError,
-    requested_columns: list[str] | None,
-    available_columns: list[str],
+    requested_columns: Sequence[str] | None,
+    available_columns: Sequence[str],
 ) -> ToolCallError:
     """Convert a column validation error to a ToolCallError.
 
     Args:
         error (ColumnsNotFoundError | DuplicateColumnsError): The column
             validation error raised by to_markdown_table.
-        requested_columns (list[str] | None): The columns that were requested.
-        available_columns (list[str]): The columns available in the DataFrame.
+        requested_columns (Sequence[str] | None): The columns that were
+            requested.
+        available_columns (Sequence[str]): The columns available in the
+            DataFrame.
 
     Returns:
         ToolCallError: Formatted error with details appropriate to the error type.
@@ -858,8 +861,8 @@ def _handle_column_validation_error(
             error_type="DuplicateColumns",
             message=str(error),
             details={
-                "available_columns": available_columns,
-                "requested_columns": requested_columns,
+                "available_columns": list(available_columns),
+                "requested_columns": list(requested_columns) if requested_columns is not None else None,
                 "duplicate_columns": duplicates,
             },
         )
@@ -868,8 +871,8 @@ def _handle_column_validation_error(
         error_type="InvalidColumns",
         message=f"Invalid columns specified: {error}",
         details={
-            "available_columns": available_columns,
-            "requested_columns": requested_columns,
+            "available_columns": list(available_columns),
+            "requested_columns": list(requested_columns) if requested_columns is not None else None,
             "invalid_columns": error.missing_columns,
         },
     )
