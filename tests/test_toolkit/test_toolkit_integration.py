@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import polars as pl
@@ -12,12 +13,25 @@ from dfkit.models import DataFrameReference, ToolCallError
 from dfkit.toolkit import DataFrameToolkit
 
 
+@dataclass
+class WorkflowFixture:
+    """Fixture container for integration test toolkit and tools.
+
+    Attributes:
+        toolkit (DataFrameToolkit): The toolkit instance with registered DataFrames.
+        tools (dict[str, Any]): Tool name to tool instance mapping.
+    """
+
+    toolkit: DataFrameToolkit
+    tools: dict[str, Any]
+
+
 @pytest.fixture
-def workflow_toolkit() -> dict[str, Any]:
+def workflow_toolkit() -> WorkflowFixture:
     """Create a toolkit with sample DataFrames and tool dict for workflow tests.
 
     Returns:
-        dict[str, Any]: Dict with 'toolkit' and 'tools' keys.
+        WorkflowFixture: Fixture with toolkit and tools.
     """
     toolkit = DataFrameToolkit()
     toolkit.register_dataframe(
@@ -39,16 +53,16 @@ def workflow_toolkit() -> dict[str, Any]:
         description="Department budgets",
     )
     tools = {t.name: t for t in toolkit.get_tools()}
-    return {"toolkit": toolkit, "tools": tools}
+    return WorkflowFixture(toolkit=toolkit, tools=tools)
 
 
-def test_workflow_list_inspect_view(workflow_toolkit: dict[str, Any]) -> None:
+def test_workflow_list_inspect_view(workflow_toolkit: WorkflowFixture) -> None:
     """Simulate LLM listing, inspecting, and viewing DataFrames.
 
     Args:
-        workflow_toolkit (dict[str, Any]): Fixture with toolkit and tools.
+        workflow_toolkit (WorkflowFixture): Fixture with toolkit and tools.
     """
-    tools = workflow_toolkit["tools"]
+    tools = workflow_toolkit.tools
 
     # Step 1: LLM lists available DataFrames
     available = tools["list_dataframes"].invoke({})
@@ -82,13 +96,13 @@ def test_workflow_list_inspect_view(workflow_toolkit: dict[str, Any]) -> None:
         assert "|" in md_table
 
 
-def test_workflow_query_derive_error(workflow_toolkit: dict[str, Any]) -> None:
+def test_workflow_query_derive_error(workflow_toolkit: WorkflowFixture) -> None:
     """Simulate LLM querying, deriving results, viewing, and error handling.
 
     Args:
-        workflow_toolkit (dict[str, Any]): Fixture with toolkit and tools.
+        workflow_toolkit (WorkflowFixture): Fixture with toolkit and tools.
     """
-    tools = workflow_toolkit["tools"]
+    tools = workflow_toolkit.tools
 
     # Step 1: LLM gets IDs for SQL query
     emp_id = tools["get_dataframe_id"].invoke({"name": "employees"})
