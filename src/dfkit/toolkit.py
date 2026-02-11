@@ -9,6 +9,8 @@ from langchain_core.tools import BaseTool, tool
 from sqlglot import exp
 
 from dfkit.exceptions import (
+    ColumnsNotFoundError,
+    DuplicateColumnsError,
     SQLBlacklistedCommandError,
     SQLColumnError,
     SQLSyntaxError,
@@ -24,6 +26,7 @@ from dfkit.models import (
     ToolCallError,
 )
 from dfkit.persistence import REL_TOL_DEFAULT, restore_registry_from_state
+from dfkit.polars_utils import to_markdown_table
 from dfkit.registry import DataFrameRegistry
 from dfkit.sql_utils import DESTRUCTIVE_COMMANDS, extract_table_names, validate_sql
 
@@ -98,6 +101,7 @@ class DataFrameToolkit:
             tool(self.get_dataframe_reference),
             tool(self.list_dataframes),
             tool(self.execute_sql),
+            tool(self.view_as_markdown_table),
         )
 
     # -------------------------------------------------------------------------
@@ -395,24 +399,7 @@ class DataFrameToolkit:
             >>> toolkit.get_dataframe_reference(ref.id)  # doctest: +ELLIPSIS
             DataFrameReference(...)
         """
-        # Try lookup by ID first (O(1) since registry.references is keyed by ID)
-        if identifier in self._registry.references:
-            return self._registry.references[identifier]
-
-        # Try lookup by name (O(n) scan)
-        try:
-            return self._get_reference_by_name(identifier)
-        except KeyError:
-            pass
-
-        return ToolCallError(
-            error_type="DataFrameNotFound",
-            message=f"DataFrame '{identifier}' not found by name or ID",
-            details={
-                "available_names": [ref.name for ref in self._registry.references.values()],
-                "available_ids": list(self._registry.references.keys()),
-            },
-        )
+        return self._resolve_reference(identifier)
 
     def execute_sql(
         self,
@@ -488,6 +475,79 @@ class DataFrameToolkit:
         self._registry.register(reference, result_df)
 
         return reference
+
+    def view_as_markdown_table(
+        self,
+        identifier: str,
+        columns: list[str] | None = None,
+        num_rows: int = 10,
+        *,
+        sample: bool = False,
+        seed: int | None = None,
+    ) -> str | ToolCallError:
+        """View a DataFrame as a markdown-formatted table.
+
+        Use this tool to preview DataFrame contents in a human-readable markdown
+        format. This is useful for inspecting data before writing SQL queries or
+        for presenting results to users. You can optionally select specific
+        columns and control the number of rows displayed.
+
+        Args:
+            identifier (str): Either the DataFrame name or its ID (df_xxxxxxxx).
+            columns (list[str] | None): Optional list of column names to display.
+                If None, all columns are shown. Defaults to None.
+            num_rows (int): Maximum number of rows to display. Must be at least 1.
+                Defaults to 10.
+            sample (bool): If True, randomly sample rows instead of taking the
+                first rows. Useful for large DataFrames. Defaults to False.
+            seed (int | None): Random seed for sampling when sample=True. Only
+                valid when sample=True. Defaults to None.
+
+        Returns:
+            str | ToolCallError: Markdown-formatted table string, or ToolCallError
+                if the DataFrame is not found or columns are invalid.
+
+        Examples:
+            >>> import polars as pl
+            >>> toolkit = DataFrameToolkit()
+            >>> df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+            >>> ref = toolkit.register_dataframe("sales", df)
+            >>> result = toolkit.view_as_markdown_table("sales", num_rows=2)
+            >>> isinstance(result, str)
+            True
+            >>> result = toolkit.view_as_markdown_table(ref.id, columns=["id"])
+            >>> isinstance(result, str)
+            True
+        """
+        resolved = self._resolve_reference(identifier)
+        if isinstance(resolved, ToolCallError):
+            return resolved
+        reference = resolved
+
+        # Get the actual DataFrame from the context
+        df = self._registry.context.get_dataframe(reference.id)
+
+        # Collect LazyFrame if needed
+        if isinstance(df, pl.LazyFrame):
+            df = df.collect()
+
+        # Convert to markdown table, catching validation errors
+        try:
+            return to_markdown_table(
+                df,
+                columns=columns,
+                num_rows=num_rows,
+                sample=sample,
+                seed=seed,
+            )
+        except (ColumnsNotFoundError, DuplicateColumnsError) as e:
+            return _handle_column_validation_error(e, columns, df.columns)
+        except ValueError as e:
+            return ToolCallError(
+                error_type="InvalidArgument",
+                message=str(e),
+                details={},
+            )
 
     def export_state(self) -> DataFrameToolkitState:
         """Export the current toolkit state for serialization.
@@ -597,6 +657,38 @@ class DataFrameToolkit:
         msg = f"DataFrame '{name}' is not registered"
         raise KeyError(msg)
 
+    def _resolve_reference(self, identifier: str) -> DataFrameReference | ToolCallError:
+        """Resolve a name or ID to its DataFrameReference.
+
+        Tries lookup by ID first (O(1)), then falls back to name lookup (O(n)).
+        Returns a ToolCallError if neither resolves.
+
+        Args:
+            identifier (str): Either the DataFrame name or its ID (df_xxxxxxxx).
+
+        Returns:
+            DataFrameReference | ToolCallError: The resolved reference, or
+                ToolCallError if no DataFrame matches the identifier.
+        """
+        # Try lookup by ID first (O(1) since registry.references is keyed by ID)
+        if identifier in self._registry.references:
+            return self._registry.references[identifier]
+
+        # Try lookup by name (O(n) scan)
+        try:
+            return self._get_reference_by_name(identifier)
+        except KeyError:
+            pass
+
+        return ToolCallError(
+            error_type="DataFrameNotFound",
+            message=f"DataFrame '{identifier}' not found by name or ID",
+            details={
+                "available_names": [ref.name for ref in self._registry.references.values()],
+                "available_ids": list(self._registry.references.keys()),
+            },
+        )
+
     def _validate_result_name(self, result_name: str) -> ToolCallError | None:
         """Validate that a result name is acceptable for registration.
 
@@ -688,3 +780,38 @@ class DataFrameToolkit:
             bool: True if a DataFrame with this name exists, False otherwise.
         """
         return any(ref.name == name for ref in self._registry.references.values())
+
+
+# -----------------------------------------------------------------------------
+# Private Helpers
+# -----------------------------------------------------------------------------
+
+
+def _handle_column_validation_error(
+    error: ColumnsNotFoundError | DuplicateColumnsError,
+    requested_columns: list[str] | None,
+    available_columns: list[str],
+) -> ToolCallError:
+    """Convert a column validation error to a ToolCallError.
+
+    Args:
+        error (ColumnsNotFoundError | DuplicateColumnsError): The column
+            validation error raised by to_markdown_table.
+        requested_columns (list[str] | None): The columns that were requested.
+        available_columns (list[str]): The columns available in the DataFrame.
+
+    Returns:
+        ToolCallError: Formatted error with InvalidColumns type and details.
+    """
+    invalid_cols = []
+    if requested_columns is not None:
+        invalid_cols = [col for col in requested_columns if col not in available_columns]
+    return ToolCallError(
+        error_type="InvalidColumns",
+        message=f"Invalid columns specified: {error}",
+        details={
+            "available_columns": available_columns,
+            "requested_columns": requested_columns,
+            "invalid_columns": invalid_cols if invalid_cols else None,
+        },
+    )
