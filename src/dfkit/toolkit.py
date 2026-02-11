@@ -691,12 +691,12 @@ class DataFrameToolkit:
 
         try:
             df = self._registry.context.get_dataframe(resolved.id)
-        except KeyError:
+        except KeyError as e:
             msg = (
                 f"DataFrame '{resolved.id}' resolved in registry but missing "
                 f"from SQL context (identifier={identifier!r})"
             )
-            raise RuntimeError(msg) from None
+            raise RuntimeError(msg) from e
 
         if isinstance(df, pl.LazyFrame):
             df = df.collect()
