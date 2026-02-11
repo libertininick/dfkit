@@ -49,6 +49,14 @@ def test_full_workflow() -> None:
     with check:
         assert emp_ref.column_names == ["emp_id", "name", "dept", "salary"]
 
+    # Step 2.5: LLM views a sample of the employees data
+    md_table = tools["view_as_markdown_table"].invoke({"identifier": "employees", "num_rows": 3})
+    assert isinstance(md_table, str)
+    with check:
+        assert "Alice" in md_table or "Bob" in md_table  # At least some data visible
+    with check:
+        assert "|" in md_table  # Markdown table format
+
     # Step 3: LLM gets ID for SQL query
     emp_id = tools["get_dataframe_id"].invoke({"name": "employees"})
     assert isinstance(emp_id, str)
@@ -84,6 +92,10 @@ def test_full_workflow() -> None:
     assert isinstance(result2, DataFrameReference)
     with check:
         assert result2.num_rows == 1  # Only Eve (95000)
+
+    # Step 5.5: LLM views the derived result
+    md_result = tools["view_as_markdown_table"].invoke({"identifier": result2.id})
+    assert isinstance(md_result, str)
 
     # Step 6: Verify all DataFrames are visible
     final_list = tools["list_dataframes"].invoke({})
