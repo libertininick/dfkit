@@ -492,6 +492,11 @@ class DataFrameToolkit:
         for presenting results to users. You can optionally select specific
         columns and control the number of rows displayed.
 
+        Note:
+            This method temporarily modifies global ``pl.Config`` state to render
+            the table. It is not thread-safe: concurrent calls from different
+            threads may observe each other's configuration.
+
         Args:
             identifier (str): Either the DataFrame name or its ID (df_xxxxxxxx).
             columns (list[str] | None): Optional list of column names to display.
@@ -519,17 +524,10 @@ class DataFrameToolkit:
             >>> isinstance(result, str)
             True
         """
-        resolved = self._resolve_reference(identifier)
-        if isinstance(resolved, ToolCallError):
-            return resolved
-        reference = resolved
-
-        # Get the actual DataFrame from the context
-        df = self._registry.context.get_dataframe(reference.id)
-
-        # Collect LazyFrame if needed
-        if isinstance(df, pl.LazyFrame):
-            df = df.collect()
+        result = self._get_dataframe(identifier)
+        if isinstance(result, ToolCallError):
+            return result
+        df = result
 
         # Convert to markdown table, catching validation errors
         try:
@@ -656,6 +654,37 @@ class DataFrameToolkit:
                 return ref
         msg = f"DataFrame '{name}' is not registered"
         raise KeyError(msg)
+
+    def _get_dataframe(self, identifier: str) -> pl.DataFrame | ToolCallError:
+        """Resolve an identifier and retrieve its DataFrame.
+
+        Resolves the identifier to a reference, then fetches the actual
+        DataFrame from the SQL context. Returns ToolCallError if the
+        identifier or DataFrame cannot be found.
+
+        Args:
+            identifier (str): Either the DataFrame name or its ID (df_xxxxxxxx).
+
+        Returns:
+            pl.DataFrame | ToolCallError: The resolved DataFrame, or
+                ToolCallError if not found.
+        """
+        resolved = self._resolve_reference(identifier)
+        if isinstance(resolved, ToolCallError):
+            return resolved
+
+        try:
+            df = self._registry.context.get_dataframe(resolved.id)
+        except KeyError:
+            return ToolCallError(
+                error_type="DataFrameNotFound",
+                message=f"DataFrame '{resolved.id}' not found in SQL context",
+                details={"identifier": identifier, "resolved_id": resolved.id},
+            )
+
+        if isinstance(df, pl.LazyFrame):
+            df = df.collect()
+        return df
 
     def _resolve_reference(self, identifier: str) -> DataFrameReference | ToolCallError:
         """Resolve a name or ID to its DataFrameReference.
@@ -801,8 +830,25 @@ def _handle_column_validation_error(
         available_columns (list[str]): The columns available in the DataFrame.
 
     Returns:
-        ToolCallError: Formatted error with InvalidColumns type and details.
+        ToolCallError: Formatted error with details appropriate to the error type.
     """
+    if isinstance(error, DuplicateColumnsError):
+        seen: set[str] = set()
+        duplicates = []
+        for col in error.columns:
+            if col in seen:
+                duplicates.append(col)
+            seen.add(col)
+        return ToolCallError(
+            error_type="DuplicateColumns",
+            message=f"Duplicate column names specified: {error}",
+            details={
+                "available_columns": available_columns,
+                "requested_columns": requested_columns,
+                "duplicate_columns": duplicates,
+            },
+        )
+
     invalid_cols = []
     if requested_columns is not None:
         invalid_cols = [col for col in requested_columns if col not in available_columns]
