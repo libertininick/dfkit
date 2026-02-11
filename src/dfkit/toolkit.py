@@ -1,4 +1,29 @@
-"""DataFrame toolkit for managing DataFrames with LangChain tool integration."""
+"""DataFrame toolkit for managing DataFrames with LangChain tool integration.
+
+This toolkit provides a high-level interface for working with DataFrames in
+LLM agent contexts. It maintains a registry of DataFrames with descriptive
+metadata that helps agents understand and query the data.
+
+The toolkit uses composition to manage an internal DataFrameContext for SQL
+query execution while exposing a user-friendly API based on DataFrame names
+rather than internal identifiers.
+
+Design Note - ID as Primary Key:
+    Internally, DataFrames are keyed by their generated ID (e.g., "df_00000001"),
+    not by user-provided names. This design choice ensures:
+
+    1. **Single source of truth**: Both the reference registry and the SQL context
+        use the same key (ID), eliminating synchronization bugs.
+    2. **SQL safety**: User-provided names may contain spaces, reserved words, or
+        special characters. The generated ID is always SQL-safe.
+    3. **LLM consistency**: LLMs should always use IDs in SQL queries. Keying by
+        ID reinforces this as the canonical identifier.
+
+    User-friendly names are stored in the DataFrameReference and resolved via
+    O(n) scan when needed. This is acceptable because:
+    - Typical usage involves 2-20 DataFrames, making O(n) effectively O(1).
+    - Name lookups happen at registration/unregistration, not during queries.
+"""
 
 from __future__ import annotations
 
@@ -38,26 +63,6 @@ class DataFrameToolkit:
     LLM agent contexts. It maintains a registry of DataFrames with descriptive
     metadata that helps agents understand and query the data.
 
-    The toolkit uses composition to manage an internal DataFrameContext for SQL
-    query execution while exposing a user-friendly API based on DataFrame names
-    rather than internal identifiers.
-
-    Design Note - ID as Primary Key:
-        Internally, DataFrames are keyed by their generated ID (e.g., "df_00000001"),
-        not by user-provided names. This design choice ensures:
-
-        1. **Single source of truth**: Both the reference registry and the SQL context
-           use the same key (ID), eliminating synchronization bugs.
-        2. **SQL safety**: User-provided names may contain spaces, reserved words, or
-           special characters. The generated ID is always SQL-safe.
-        3. **LLM consistency**: LLMs should always use IDs in SQL queries. Keying by
-           ID reinforces this as the canonical identifier.
-
-        User-friendly names are stored in the DataFrameReference and resolved via
-        O(n) scan when needed. This is acceptable because:
-        - Typical usage involves 2-20 DataFrames, making O(n) effectively O(1).
-        - Name lookups happen at registration/unregistration, not during queries.
-
     Examples:
         >>> import polars as pl
 
@@ -96,6 +101,8 @@ class DataFrameToolkit:
                 If None, a new empty registry is created. Defaults to None.
         """
         self._registry = registry if registry is not None else DataFrameRegistry()
+
+        # Initialize tools
         self._core_tools = (
             tool(self.get_dataframe_id),
             tool(self.get_dataframe_reference),
@@ -512,9 +519,6 @@ class DataFrameToolkit:
             str | ToolCallError: Markdown-formatted table string, or ToolCallError
                 if the DataFrame is not found or columns are invalid.
 
-        Raises:
-            ValueError: If wrong exception is raised.
-
         Examples:
             >>> import polars as pl
             >>> toolkit = DataFrameToolkit()
@@ -541,11 +545,6 @@ class DataFrameToolkit:
                 seed=seed,
             )
         except (ColumnsNotFoundError, DuplicateColumnsError) as e:
-            if columns is None:
-                raise ValueError(
-                    "ColumnsNotFoundError | DuplicateColumnsError raised but columns=None."
-                    "These exceptions only raised when columns provided"
-                ) from None
             return _handle_column_validation_error(e, columns, df.columns)
         except ValueError as e:
             return ToolCallError(
@@ -834,7 +833,7 @@ class DataFrameToolkit:
 
 def _handle_column_validation_error(
     error: ColumnsNotFoundError | DuplicateColumnsError,
-    requested_columns: list[str],
+    requested_columns: list[str] | None,
     available_columns: list[str],
 ) -> ToolCallError:
     """Convert a column validation error to a ToolCallError.
@@ -842,7 +841,7 @@ def _handle_column_validation_error(
     Args:
         error (ColumnsNotFoundError | DuplicateColumnsError): The column
             validation error raised by to_markdown_table.
-        requested_columns (list[str]): The columns that were requested.
+        requested_columns (list[str] | None): The columns that were requested.
         available_columns (list[str]): The columns available in the DataFrame.
 
     Returns:
