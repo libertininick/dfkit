@@ -842,8 +842,6 @@ class TestViewAsMarkdownTable:
         result = toolkit.view_as_markdown_table("data", columns=["a", "c"])
 
         # Assert
-        with check:
-            assert isinstance(result, str)
         assert isinstance(result, str)
         header_line = result.strip().split("\n")[0]
         header_cols = [col.strip() for col in header_line.strip("|").split("|")]
