@@ -83,14 +83,19 @@ class DuplicateColumnsError(ValueError):
 
     Attributes:
         columns (list[str]): The column list that contains duplicates.
+        duplicate_columns (list[str]): The specific column names that are
+            duplicated (each listed once).
 
     Examples:
         >>> err = DuplicateColumnsError(columns=["a", "a", "b"])
         >>> err.columns
         ['a', 'a', 'b']
+        >>> err.duplicate_columns
+        ['a']
     """
 
     columns: list[str]
+    duplicate_columns: list[str]
 
     def __init__(self, columns: list[str]) -> None:
         """Initialize DuplicateColumnsError.
@@ -100,6 +105,12 @@ class DuplicateColumnsError(ValueError):
         """
         super().__init__("Duplicate column names are not allowed")
         self.columns = columns
+        seen: set[str] = set()
+        self.duplicate_columns = []
+        for col in columns:
+            if col in seen:
+                self.duplicate_columns.append(col)
+            seen.add(col)
 
 
 class SQLValidationError(Exception):

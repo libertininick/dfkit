@@ -546,6 +546,7 @@ class DataFrameToolkit:
             )
         except (ColumnsNotFoundError, DuplicateColumnsError) as e:
             return _handle_column_validation_error(e, columns, df.columns)
+        # Catches remaining ValueError cases: num_rows < 1, seed without sample=True
         except ValueError as e:
             return ToolCallError(
                 error_type="InvalidArgument",
@@ -851,19 +852,13 @@ def _handle_column_validation_error(
         ToolCallError: Formatted error with details appropriate to the error type.
     """
     if isinstance(error, DuplicateColumnsError):
-        seen: set[str] = set()
-        duplicates = []
-        for col in error.columns:
-            if col in seen:
-                duplicates.append(col)
-            seen.add(col)
         return ToolCallError(
             error_type="DuplicateColumns",
             message=str(error),
             details={
                 "available_columns": list(available_columns),
                 "requested_columns": list(requested_columns) if requested_columns is not None else None,
-                "duplicate_columns": duplicates,
+                "duplicate_columns": error.duplicate_columns,
             },
         )
 
