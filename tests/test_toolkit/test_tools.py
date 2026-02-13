@@ -1036,15 +1036,14 @@ class TestViewAsMarkdownTable:
         # When num_rows < total rows, table should include ellipsis indicator
         with check:
             assert "…" in result or "..." in result
-        # Verify row count: header + separator + 5 data rows + ellipsis row = content lines with pipes
+        # Verify row count: header + separator + 5 data rows + 1 ellipsis = content lines with pipes
         data_lines = [line for line in result.strip().split("\n") if line.strip().startswith("|")]
-        # Subtract header and separator lines
-        content_rows = len(data_lines) - 2
+        content_rows = len(data_lines) - 2  # Subtract header and separator
         with check:
-            assert content_rows <= 6  # 5 data + 1 ellipsis
+            assert content_rows == 6  # 5 data + 1 ellipsis
 
     def test_view_with_sample(self, toolkit: DataFrameToolkit) -> None:
-        """Given DataFrame with 100 rows, When sample=True, num_rows=5, Then returns string (smoke test).
+        """Given DataFrame with 100 rows, When sample=True, num_rows=5, Then returns 5 sampled rows.
 
         Args:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
@@ -1056,13 +1055,17 @@ class TestViewAsMarkdownTable:
         # Act
         result = toolkit.view_as_markdown_table("data", num_rows=5, sample=True)
 
-        # Assert - smoke test that it returns valid markdown
-        with check:
-            assert isinstance(result, str)
+        # Assert
+        assert isinstance(result, str)
         with check:
             assert "|" in result
         with check:
             assert "---" in result
+        # Verify correct number of sampled rows
+        data_lines = [line for line in result.strip().split("\n") if line.strip().startswith("|")]
+        content_rows = len(data_lines) - 2  # Subtract header and separator
+        with check:
+            assert content_rows == 5
 
     def test_view_with_sample_and_seed_reproducible(self, toolkit: DataFrameToolkit) -> None:
         """Given DataFrame, When called twice with same seed, Then results are identical.
@@ -1178,12 +1181,40 @@ class TestViewAsMarkdownTable:
         result = tool_view.invoke({"identifier": "sales"})
 
         # Assert
-        with check:
-            assert isinstance(result, str)
+        assert isinstance(result, str)
         with check:
             assert "|" in result
         with check:
             assert "---" in result
+        with check:
+            assert "North" in result
+        with check:
+            assert "5800" in result
+
+    def test_view_tool_invoke_with_optional_params(self, toolkit: DataFrameToolkit) -> None:
+        """Given toolkit, When tool invoked with columns and num_rows, Then returns filtered markdown.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"planet": ["Mars", "Venus", "Earth"], "moons": [2, 0, 1], "rings": [False, False, False]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        tools = toolkit.get_core_tools()
+        tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        result = tool_view.invoke({"identifier": "data", "columns": ["planet", "moons"], "num_rows": 2})
+
+        # Assert
+        assert isinstance(result, str)
+        header_line = result.strip().split("\n")[0]
+        with check:
+            assert "planet" in header_line
+        with check:
+            assert "moons" in header_line
+        with check:
+            assert "rings" not in header_line
 
     def test_view_tool_schema_excludes_self(self, toolkit: DataFrameToolkit) -> None:
         """Given toolkit, When tool schema inspected, Then 'self' not in properties.
@@ -1204,6 +1235,36 @@ class TestViewAsMarkdownTable:
             assert "self" not in tool_schema.get("properties", {})
         with check:
             assert "identifier" in tool_schema.get("properties", {})
+
+    def test_view_tool_schema_columns_property(self, toolkit: DataFrameToolkit) -> None:
+        """Given toolkit, When tool schema inspected, Then columns property has correct array type.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        toolkit.register_dataframe("test", pl.DataFrame({"a": [1, 2, 3]}))
+
+        # Act
+        tools = toolkit.get_core_tools()
+        tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        tool_schema = tool_view.args_schema.model_json_schema()
+        columns_prop = tool_schema["properties"]["columns"]
+
+        # Assert - columns should accept array of strings or null
+        # LangChain may represent nullable types using anyOf
+        if "anyOf" in columns_prop:
+            type_options = [opt.get("type") for opt in columns_prop["anyOf"]]
+            with check:
+                assert "array" in type_options
+            array_option = next(opt for opt in columns_prop["anyOf"] if opt.get("type") == "array")
+            with check:
+                assert array_option.get("items", {}).get("type") == "string"
+        else:
+            with check:
+                assert columns_prop.get("type") == "array"
+            with check:
+                assert columns_prop.get("items", {}).get("type") == "string"
 
     def test_view_included_in_get_tools(self, toolkit: DataFrameToolkit) -> None:
         """Given toolkit, When get_tools called, Then view_as_markdown_table in tool names.
