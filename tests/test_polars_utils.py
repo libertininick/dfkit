@@ -409,10 +409,10 @@ class TestToMarkdownTableSampling:
         # Act
         result = to_markdown_table(df, num_rows=5)
 
-        # Assert - output should be truncated (less than full 20 rows) and include ellipsis
+        # Assert - 5 data rows + 1 ellipsis row
         data_row_count = _count_markdown_table_data_rows(result)
         with check:
-            assert data_row_count < 20, "Output should be truncated"
+            assert data_row_count == 6, "Expected 5 data rows + 1 ellipsis row"
         with check:
             assert "…" in result, "Truncated output should contain ellipsis marker"
 
