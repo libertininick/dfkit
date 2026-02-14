@@ -470,6 +470,7 @@ def _execute_reconstruction_query(source_query: str, name: str, registry: DataFr
         msg = f"SQL execution failed while reconstructing '{name}': {e}. Query: {source_query}"
         raise ValueError(msg) from e
 
+    # Defensive: Polars execute(eager=True) should always return DataFrame per contract.
     if not isinstance(result_df, pl.DataFrame):
         msg = f"execute_sql(eager=True) returned {type(result_df).__name__}, expected DataFrame"
         raise TypeError(msg)

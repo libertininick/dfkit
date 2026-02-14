@@ -1,8 +1,8 @@
 """Tests for the persistence module functions."""
 
-from __future__ import annotations
+# ruff: noqa: S608
 
-from unittest.mock import patch
+from __future__ import annotations
 
 import polars as pl
 import pytest
@@ -41,17 +41,25 @@ class TestValuesNearlyEqual:
         with check:
             assert result is True
 
-    def test_values_nearly_equal_one_none_returns_false(self) -> None:
-        """Given one value is None and other is not, When called, Then returns False."""
-        # Arrange/Act/Assert
-        with check:
-            assert _values_nearly_equal(actual=None, expected=1.0) is False
-        with check:
-            assert _values_nearly_equal(actual=1.0, expected=None) is False
-        with check:
-            assert _values_nearly_equal(actual=None, expected="test") is False
-        with check:
-            assert _values_nearly_equal(actual="test", expected=None) is False
+    @pytest.mark.parametrize(
+        ("actual", "expected"),
+        [
+            (None, 1.0),
+            (1.0, None),
+            (None, "test"),
+            ("test", None),
+        ],
+    )
+    def test_values_nearly_equal_one_none_returns_false(
+        self, actual: float | str | None, expected: float | str | None
+    ) -> None:
+        """Given one value is None and other is not, When called, Then returns False.
+
+        Args:
+            actual (float | str | None): The actual value to compare.
+            expected (float | str | None): The expected value to compare.
+        """
+        assert _values_nearly_equal(actual=actual, expected=expected) is False
 
     def test_values_nearly_equal_equal_floats_returns_true(self) -> None:
         """Given two equal float values, When called, Then returns True."""
@@ -120,13 +128,23 @@ class TestValuesNearlyEqual:
         with check:
             assert result is False
 
-    def test_values_nearly_equal_mixed_types_returns_false(self) -> None:
-        """Given one string and one float, When called, Then returns False."""
-        # Arrange/Act/Assert
-        with check:
-            assert _values_nearly_equal(actual="1.0", expected=1.0) is False
-        with check:
-            assert _values_nearly_equal(actual=1.0, expected="1.0") is False
+    @pytest.mark.parametrize(
+        ("actual", "expected"),
+        [
+            ("1.0", 1.0),
+            (1.0, "1.0"),
+        ],
+    )
+    def test_values_nearly_equal_mixed_types_returns_false(
+        self, actual: float | str | None, expected: float | str | None
+    ) -> None:
+        """Given one string and one float, When called, Then returns False.
+
+        Args:
+            actual (float | str | None): The actual value to compare.
+            expected (float | str | None): The expected value to compare.
+        """
+        assert _values_nearly_equal(actual=actual, expected=expected) is False
 
     def test_values_nearly_equal_both_nan_returns_true(self) -> None:
         """Given both values are NaN, When called, Then returns True."""
@@ -141,13 +159,23 @@ class TestValuesNearlyEqual:
         with check:
             assert result is True
 
-    def test_values_nearly_equal_one_nan_returns_false(self) -> None:
-        """Given one value is NaN and other is not, When called, Then returns False."""
-        # Arrange/Act/Assert
-        with check:
-            assert _values_nearly_equal(actual=float("nan"), expected=1.0) is False
-        with check:
-            assert _values_nearly_equal(actual=1.0, expected=float("nan")) is False
+    @pytest.mark.parametrize(
+        ("actual", "expected"),
+        [
+            (float("nan"), 1.0),
+            (1.0, float("nan")),
+        ],
+    )
+    def test_values_nearly_equal_one_nan_returns_false(
+        self, actual: float | str | None, expected: float | str | None
+    ) -> None:
+        """Given one value is NaN and other is not, When called, Then returns False.
+
+        Args:
+            actual (float | str | None): The actual value to compare.
+            expected (float | str | None): The expected value to compare.
+        """
+        assert _values_nearly_equal(actual=actual, expected=expected) is False
 
     def test_values_nearly_equal_both_true_returns_true(self) -> None:
         """Given both values are True, When called, Then returns True."""
@@ -167,29 +195,45 @@ class TestValuesNearlyEqual:
         with check:
             assert result is True
 
-    def test_values_nearly_equal_different_bools_returns_false(self) -> None:
-        """Given one True and one False, When called, Then returns False."""
-        # Arrange/Act/Assert
-        with check:
-            assert _values_nearly_equal(actual=True, expected=False) is False
-        with check:
-            assert _values_nearly_equal(actual=False, expected=True) is False
+    @pytest.mark.parametrize(
+        ("actual", "expected"),
+        [
+            (True, False),
+            (False, True),
+        ],
+    )
+    def test_values_nearly_equal_different_bools_returns_false(
+        self, actual: float | str | None, expected: float | str | None
+    ) -> None:
+        """Given one True and one False, When called, Then returns False.
 
-    def test_values_nearly_equal_bool_and_non_bool_returns_false(self) -> None:
-        """Given one bool and one non-bool, When called, Then returns False."""
-        # Arrange/Act/Assert
-        with check:
-            assert _values_nearly_equal(actual=True, expected=1.0) is False
-        with check:
-            assert _values_nearly_equal(actual=1.0, expected=True) is False
-        with check:
-            assert _values_nearly_equal(actual=False, expected=0.0) is False
-        with check:
-            assert _values_nearly_equal(actual=0.0, expected=False) is False
-        with check:
-            assert _values_nearly_equal(actual=True, expected="True") is False
-        with check:
-            assert _values_nearly_equal(actual="True", expected=True) is False
+        Args:
+            actual (float | str | None): The actual value to compare.
+            expected (float | str | None): The expected value to compare.
+        """
+        assert _values_nearly_equal(actual=actual, expected=expected) is False
+
+    @pytest.mark.parametrize(
+        ("actual", "expected"),
+        [
+            (True, 1.0),
+            (1.0, True),
+            (False, 0.0),
+            (0.0, False),
+            (True, "True"),
+            ("True", True),
+        ],
+    )
+    def test_values_nearly_equal_bool_and_non_bool_returns_false(
+        self, actual: float | str | None, expected: float | str | None
+    ) -> None:
+        """Given one bool and one non-bool, When called, Then returns False.
+
+        Args:
+            actual (float | str | None): The actual value to compare.
+            expected (float | str | None): The expected value to compare.
+        """
+        assert _values_nearly_equal(actual=actual, expected=expected) is False
 
     def test_values_nearly_equal_very_large_floats_returns_true(self) -> None:
         """Given two very large floats within tolerance, When called, Then returns True."""
@@ -243,21 +287,41 @@ class TestValuesNearlyEqual:
         with check:
             assert result is True
 
-    def test_values_nearly_equal_opposite_infinities_returns_false(self) -> None:
-        """Given positive and negative infinity, When called, Then returns False."""
-        # Arrange/Act/Assert
-        with check:
-            assert _values_nearly_equal(actual=float("inf"), expected=float("-inf")) is False
-        with check:
-            assert _values_nearly_equal(actual=float("-inf"), expected=float("inf")) is False
+    @pytest.mark.parametrize(
+        ("actual", "expected"),
+        [
+            (float("inf"), float("-inf")),
+            (float("-inf"), float("inf")),
+        ],
+    )
+    def test_values_nearly_equal_opposite_infinities_returns_false(
+        self, actual: float | str | None, expected: float | str | None
+    ) -> None:
+        """Given positive and negative infinity, When called, Then returns False.
 
-    def test_values_nearly_equal_infinity_vs_finite_returns_false(self) -> None:
-        """Given infinity and a finite number, When called, Then returns False."""
-        # Arrange/Act/Assert
-        with check:
-            assert _values_nearly_equal(actual=float("inf"), expected=1e308) is False
-        with check:
-            assert _values_nearly_equal(actual=1e308, expected=float("inf")) is False
+        Args:
+            actual (float | str | None): The actual value to compare.
+            expected (float | str | None): The expected value to compare.
+        """
+        assert _values_nearly_equal(actual=actual, expected=expected) is False
+
+    @pytest.mark.parametrize(
+        ("actual", "expected"),
+        [
+            (float("inf"), 1e308),
+            (1e308, float("inf")),
+        ],
+    )
+    def test_values_nearly_equal_infinity_vs_finite_returns_false(
+        self, actual: float | str | None, expected: float | str | None
+    ) -> None:
+        """Given infinity and a finite number, When called, Then returns False.
+
+        Args:
+            actual (float | str | None): The actual value to compare.
+            expected (float | str | None): The expected value to compare.
+        """
+        assert _values_nearly_equal(actual=actual, expected=expected) is False
 
     def test_values_nearly_equal_negative_zero_vs_zero_returns_true(self) -> None:
         """Given -0.0 and 0.0, When called, Then returns True."""
@@ -346,6 +410,40 @@ class TestCompareColumnSummaries:
             assert "max" in result
         with check:
             assert "mean" in result
+
+    def test_compare_column_summaries_null_count_mismatch_returns_null_count_key(self) -> None:
+        """Given summaries with different null counts, When compared, Then returns dict with null_count key."""
+        # Arrange
+        series_no_nulls = pl.Series("col", [1, 2, 3])
+        series_with_nulls = pl.Series("col", [1, None, 3])
+        summary_no_nulls = ColumnSummary.from_series(series_no_nulls)
+        summary_with_nulls = ColumnSummary.from_series(series_with_nulls)
+
+        # Act
+        result = _compare_column_summaries(summary_no_nulls, summary_with_nulls)
+
+        # Assert
+        with check:
+            assert "null_count" in result
+        with check:
+            assert result["null_count"] == (0, 1)
+
+    def test_compare_column_summaries_unique_count_mismatch_returns_unique_count_key(self) -> None:
+        """Given summaries with different unique counts, When compared, Then returns dict with unique_count key."""
+        # Arrange
+        series_all_unique = pl.Series("col", [1, 2, 3])
+        series_with_dupes = pl.Series("col", [1, 1, 1])
+        summary_all_unique = ColumnSummary.from_series(series_all_unique)
+        summary_with_dupes = ColumnSummary.from_series(series_with_dupes)
+
+        # Act
+        result = _compare_column_summaries(summary_all_unique, summary_with_dupes)
+
+        # Assert
+        with check:
+            assert "unique_count" in result
+        with check:
+            assert result["unique_count"] == (3, 1)
 
 
 class TestValidateDataframeMatchesReference:
@@ -481,6 +579,18 @@ class TestResolveDataframeKeysToIds:
                 names_to_ids=names_to_ids,
             )
 
+    def test_resolve_dataframe_keys_to_ids_empty_inputs_returns_empty(self) -> None:
+        """Given empty dataframes and names_to_ids, When normalized, Then returns empty dict."""
+        # Arrange/Act
+        result = _resolve_dataframe_keys_to_ids(
+            dataframes={},
+            names_to_ids={},
+        )
+
+        # Assert
+        with check:
+            assert result == {}
+
 
 class TestSortReferencesByDependencyOrder:
     """Tests for _sort_references_by_dependency_order function."""
@@ -512,30 +622,22 @@ class TestSortReferencesByDependencyOrder:
         # Create A (base)
         ref_a = DataFrameReference.from_dataframe("A", df)
 
-        # Create B (depends on A) - we need to manually set the ID since from_dataframe generates a new one
-        ref_b = DataFrameReference(
-            id="df_bbbbbbbb",
+        # Create B (depends on A)
+        ref_b = _build_derivative_reference(
+            ref_id="df_bbbbbbbb",
             name="B",
-            description="",
-            num_rows=3,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries={"a": ColumnSummary.from_series(df["a"])},
             parent_ids=[ref_a.id],
             source_query="SELECT * FROM A",
+            df=df,
         )
 
         # Create C (depends on B)
-        ref_c = DataFrameReference(
-            id="df_cccccccc",
+        ref_c = _build_derivative_reference(
+            ref_id="df_cccccccc",
             name="C",
-            description="",
-            num_rows=3,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries={"a": ColumnSummary.from_series(df["a"])},
             parent_ids=[ref_b.id],
             source_query="SELECT * FROM B",
+            df=df,
         )
 
         # Arrange in reverse order
@@ -574,42 +676,30 @@ class TestSortReferencesByDependencyOrder:
         )
 
         # Create B (depends on A)
-        ref_b = DataFrameReference(
-            id="df_bbbbbbbb",
+        ref_b = _build_derivative_reference(
+            ref_id="df_bbbbbbbb",
             name="B",
-            description="",
-            num_rows=3,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries=col_summary,
             parent_ids=[ref_a.id],
             source_query="SELECT * FROM A",
+            df=df,
         )
 
         # Create C (depends on A)
-        ref_c = DataFrameReference(
-            id="df_cccccccc",
+        ref_c = _build_derivative_reference(
+            ref_id="df_cccccccc",
             name="C",
-            description="",
-            num_rows=3,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries=col_summary,
             parent_ids=[ref_a.id],
             source_query="SELECT * FROM A",
+            df=df,
         )
 
         # Create D (depends on B and C)
-        ref_d = DataFrameReference(
-            id="df_dddddddd",
+        ref_d = _build_derivative_reference(
+            ref_id="df_dddddddd",
             name="D",
-            description="",
-            num_rows=3,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries=col_summary,
             parent_ids=[ref_b.id, ref_c.id],
             source_query="SELECT * FROM B JOIN C",
+            df=df,
         )
 
         # Arrange in any order
@@ -638,32 +728,23 @@ class TestSortReferencesByDependencyOrder:
         """Given cyclic dependency A -> B -> A, When sorted, Then raises ValueError."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2, 3]})
-        col_summary = {"a": ColumnSummary.from_series(df["a"])}
 
         # Create A (depends on B) - circular
-        ref_a = DataFrameReference(
-            id="df_aaaaaaaa",
+        ref_a = _build_derivative_reference(
+            ref_id="df_aaaaaaaa",
             name="A",
-            description="",
-            num_rows=3,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries=col_summary,
             parent_ids=["df_bbbbbbbb"],
             source_query="SELECT * FROM B",
+            df=df,
         )
 
         # Create B (depends on A) - circular
-        ref_b = DataFrameReference(
-            id="df_bbbbbbbb",
+        ref_b = _build_derivative_reference(
+            ref_id="df_bbbbbbbb",
             name="B",
-            description="",
-            num_rows=3,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries=col_summary,
             parent_ids=["df_aaaaaaaa"],
             source_query="SELECT * FROM A",
+            df=df,
         )
 
         references = [ref_a, ref_b]
@@ -676,7 +757,6 @@ class TestSortReferencesByDependencyOrder:
         """Given reference with unknown parent_id, When sorted, Then raises ValueError."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2, 3]})
-        col_summary = {"a": ColumnSummary.from_series(df["a"])}
 
         # Create A (base)
         ref_a = DataFrameReference(
@@ -686,21 +766,17 @@ class TestSortReferencesByDependencyOrder:
             num_rows=3,
             num_columns=1,
             column_names=["a"],
-            column_summaries=col_summary,
+            column_summaries={"a": ColumnSummary.from_series(df["a"])},
             parent_ids=[],
         )
 
-        # Create B (depends on non-existent reference - use valid ID format)
-        ref_b = DataFrameReference(
-            id="df_bbbbbbbb",
+        # Create B (depends on non-existent reference)
+        ref_b = _build_derivative_reference(
+            ref_id="df_bbbbbbbb",
             name="B",
-            description="",
-            num_rows=3,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries=col_summary,
             parent_ids=["df_aaaaaaaa", "df_cccccccc"],  # 'df_cccccccc' does not exist
             source_query="SELECT * FROM A JOIN missing",
+            df=df,
         )
 
         references = [ref_a, ref_b]
@@ -763,16 +839,13 @@ class TestRestoreRegistryFromState:
 
         # Create derivative reference that filters to a < 3
         derived_df = pl.DataFrame({"a": [1, 2]})
-        derived_ref = DataFrameReference(
-            id="df_de11ed11",  # Valid 8 hex chars format (0-9, a-f only)
+        derived_ref = _build_derivative_reference(
+            ref_id="df_de11ed11",
             name="derived",
             description="Filtered data",
-            num_rows=2,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries={"a": ColumnSummary.from_series(derived_df["a"])},
             parent_ids=[base_ref.id],
-            source_query=f"SELECT * FROM {base_ref.id} WHERE a < 3",  # noqa: S608
+            source_query=f"SELECT * FROM {base_ref.id} WHERE a < 3",
+            df=derived_df,
         )
 
         state = DataFrameToolkitState(references=[base_ref, derived_ref])
@@ -838,37 +911,6 @@ class TestRestoreRegistryFromState:
                 base_dataframes={"users": df, "unknown_extra": extra_df},
             )
 
-    def test_restore_registry_from_state_non_dataframe_sql_result_raises_type_error(self) -> None:
-        """Given execute_sql returns non-DataFrame during reconstruction, When restored, Then raises TypeError."""
-        # Arrange
-        base_df = pl.DataFrame({"a": [1, 2, 3, 4, 5]})
-        base_ref = DataFrameReference.from_dataframe("base", base_df)
-
-        derived_df = pl.DataFrame({"a": [1, 2]})
-        derived_ref = DataFrameReference(
-            id="df_de11ed11",
-            name="derived",
-            description="Filtered data",
-            num_rows=2,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries={"a": ColumnSummary.from_series(derived_df["a"])},
-            parent_ids=[base_ref.id],
-            source_query=f"SELECT * FROM {base_ref.id} WHERE a < 3",  # noqa: S608
-        )
-
-        state = DataFrameToolkitState(references=[base_ref, derived_ref])
-
-        # Act/Assert - patch execute_sql to return a LazyFrame instead of DataFrame
-        with (
-            patch(
-                "dfkit.context.DataFrameContext.execute_sql",
-                return_value=base_df.lazy(),
-            ),
-            pytest.raises(TypeError, match="expected DataFrame"),
-        ):
-            restore_registry_from_state(state=state, base_dataframes={"base": base_df})
-
 
 class TestReconstructDerivatives:
     """Tests for _reconstruct_derivatives function."""
@@ -890,16 +932,13 @@ class TestReconstructDerivatives:
         # but source_query that produces [4, 5] (non-deterministic replay).
         # Same shape, different values -> statistics mismatch on min/max/mean.
         original_result = pl.DataFrame({"a": [1, 2]})
-        derived_ref = DataFrameReference(
-            id="df_de11ed11",
+        derived_ref = _build_derivative_reference(
+            ref_id="df_de11ed11",
             name="derived",
             description="Non-deterministic derivative",
-            num_rows=2,
-            num_columns=1,
-            column_names=["a"],
-            column_summaries={"a": ColumnSummary.from_series(original_result["a"])},
             parent_ids=[base_ref.id],
-            source_query=f"SELECT * FROM {base_ref.id} WHERE a > 3",  # noqa: S608
+            source_query=f"SELECT * FROM {base_ref.id} WHERE a > 3",
+            df=original_result,
         )
 
         state = DataFrameToolkitState(references=[base_ref, derived_ref])
@@ -907,3 +946,41 @@ class TestReconstructDerivatives:
         # Act/Assert - validation catches the statistics mismatch
         with pytest.raises(ValueError, match="statistics mismatch"):
             _reconstruct_derivatives(state, registry)
+
+
+def _build_derivative_reference(
+    *,
+    ref_id: str,
+    name: str,
+    parent_ids: list[str],
+    source_query: str,
+    df: pl.DataFrame | None = None,
+    description: str = "",
+) -> DataFrameReference:
+    """Build a derivative DataFrameReference.
+
+    Args:
+        ref_id (str): The unique identifier for this reference.
+        name (str): Human-readable name for the reference.
+        parent_ids (list[str]): IDs of parent references this derives from.
+        source_query (str): SQL query used to derive this reference.
+        df (pl.DataFrame | None): DataFrame to derive schema/statistics from.
+            Defaults to a simple 3-row frame.
+        description (str): Optional description text.
+
+    Returns:
+        DataFrameReference: A reference configured as a derivative.
+    """
+    if df is None:
+        df = pl.DataFrame({"a": [1, 2, 3]})
+    return DataFrameReference(
+        id=ref_id,
+        name=name,
+        description=description,
+        num_rows=df.shape[0],
+        num_columns=df.shape[1],
+        column_names=df.columns,
+        column_summaries={col: ColumnSummary.from_series(df[col]) for col in df.columns},
+        parent_ids=parent_ids,
+        source_query=source_query,
+    )
