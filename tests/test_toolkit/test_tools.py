@@ -1,4 +1,7 @@
-"""Tests for DataFrameToolkit tools: get_tools, get_dataframe_id, list_dataframes, execute_sql."""
+"""Tests for DataFrameToolkit tools.
+
+Covers get_tools, get_dataframe_id, list_dataframes, execute_sql, and view_as_markdown_table.
+"""
 
 from __future__ import annotations
 
@@ -245,7 +248,11 @@ class TestExecuteSQL:
         return DataFrameToolkit()
 
     def test_execute_success(self, toolkit: DataFrameToolkit) -> None:
-        """Given valid query, When called, Then returns DataFrameReference with correct metadata."""
+        """Given valid query, When called, Then returns DataFrameReference with correct metadata.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"id": [1, 2, 3, 4, 5], "amount": [100, 200, 150, 300, 250]})
         ref = toolkit.register_dataframe("sales", df)
@@ -271,7 +278,11 @@ class TestExecuteSQL:
             assert result.column_names == ["id", "amount"]
 
     def test_execute_registers_result(self, toolkit: DataFrameToolkit) -> None:
-        """Given valid query, When called, Then result accessible via list_dataframes."""
+        """Given valid query, When called, Then result accessible via list_dataframes.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"value": [10, 20, 30]})
         ref = toolkit.register_dataframe("data", df)
@@ -292,7 +303,11 @@ class TestExecuteSQL:
             assert len(all_refs) == 2  # Original + result
 
     def test_execute_tracks_parent_ids(self, toolkit: DataFrameToolkit) -> None:
-        """Given query referencing tables, When called, Then parent_ids set correctly."""
+        """Given query referencing tables, When called, Then parent_ids set correctly.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df1 = pl.DataFrame({"id": [1, 2], "value": [100, 200]})
         df2 = pl.DataFrame({"id": [1, 2], "category": ["A", "B"]})
@@ -316,7 +331,11 @@ class TestExecuteSQL:
             assert set(result.parent_ids) == {ref1.id, ref2.id}
 
     def test_execute_sets_source_query(self, toolkit: DataFrameToolkit) -> None:
-        """Given valid query, When called, Then result has source_query set."""
+        """Given valid query, When called, Then result has source_query set.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
         ref = toolkit.register_dataframe("source", df)
@@ -334,7 +353,11 @@ class TestExecuteSQL:
             assert result.source_query is not None
 
     def test_execute_duplicate_name_returns_error(self, toolkit: DataFrameToolkit) -> None:
-        """Given existing result name, When called, Then ToolCallError with DuplicateName."""
+        """Given existing result name, When called, Then ToolCallError with DuplicateName.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"a": [1, 2, 3]})
         ref = toolkit.register_dataframe("data", df)
@@ -356,7 +379,11 @@ class TestExecuteSQL:
             assert "already registered" in result.message.lower()
 
     def test_execute_syntax_error_returns_error(self, toolkit: DataFrameToolkit) -> None:
-        """Given invalid SQL, When called, Then ToolCallError with SQLSyntaxError."""
+        """Given invalid SQL, When called, Then ToolCallError with SQLSyntaxError.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"id": [1, 2, 3]})
         ref = toolkit.register_dataframe("data", df)
@@ -376,7 +403,11 @@ class TestExecuteSQL:
             assert "query" in result.details
 
     def test_execute_table_error_returns_error(self, toolkit: DataFrameToolkit) -> None:
-        """Given unknown table, When called, Then ToolCallError with SQLTableError and available_tables."""
+        """Given unknown table, When called, Then ToolCallError with SQLTableError and available_tables.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"id": [1, 2, 3]})
         ref = toolkit.register_dataframe("known_table", df)
@@ -404,7 +435,11 @@ class TestExecuteSQL:
             assert ref.id in available_tables
 
     def test_execute_column_error_returns_error(self, toolkit: DataFrameToolkit) -> None:
-        """Given invalid column, When called, Then ToolCallError with SQLColumnError."""
+        """Given invalid column, When called, Then ToolCallError with SQLColumnError.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
         ref = toolkit.register_dataframe("users", df)
@@ -429,7 +464,11 @@ class TestExecuteSQL:
             )
 
     def test_execute_blacklisted_command_returns_error(self, toolkit: DataFrameToolkit) -> None:
-        """Given DELETE/DROP/etc, When called, Then ToolCallError with SQLBlacklistedCommand."""
+        """Given DELETE/DROP/etc, When called, Then ToolCallError with SQLBlacklistedCommand.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
         ref = toolkit.register_dataframe("data", df)
@@ -469,7 +508,11 @@ class TestExecuteSQL:
             assert result_insert.details.get("blocked_command") == "INSERT"
 
     def test_execute_join_query_success(self, toolkit: DataFrameToolkit) -> None:
-        """Given JOIN query across two tables, When called, Then returns correct result."""
+        """Given JOIN query across two tables, When called, Then returns correct result.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         users = pl.DataFrame({"user_id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]})
         orders = pl.DataFrame({"order_id": [101, 102, 103], "user_id": [1, 1, 2], "amount": [50.0, 75.0, 100.0]})
@@ -499,7 +542,11 @@ class TestExecuteSQL:
             assert set(result.parent_ids) == {ref_users.id, ref_orders.id}
 
     def test_execute_result_can_be_queried(self, toolkit: DataFrameToolkit) -> None:
-        """Given executed query result, When new query references result, Then works."""
+        """Given executed query result, When new query references result, Then works.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange - create base DataFrame
         base_df = pl.DataFrame({"category": ["A", "A", "B", "B"], "value": [10, 20, 30, 40]})
         base_ref = toolkit.register_dataframe("base", base_df)
@@ -526,7 +573,11 @@ class TestExecuteSQL:
             assert result1.id in result2.parent_ids
 
     def test_execute_aggregation_query_success(self, toolkit: DataFrameToolkit) -> None:
-        """Given aggregation query with GROUP BY, When called, Then returns correct aggregated results."""
+        """Given aggregation query with GROUP BY, When called, Then returns correct aggregated results.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         sales = pl.DataFrame({
             "region": ["North", "North", "South", "South", "East"],
@@ -553,7 +604,11 @@ class TestExecuteSQL:
             assert set(result.column_names) == {"region", "total_revenue", "sale_count"}
 
     def test_execute_with_cte_success(self, toolkit: DataFrameToolkit) -> None:
-        """Given query with CTE (Common Table Expression), When called, Then returns correct result."""
+        """Given query with CTE (Common Table Expression), When called, Then returns correct result.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         scores = pl.DataFrame({"student": ["Alice", "Bob", "Charlie", "Diana"], "score": [85, 92, 78, 95]})
         ref = toolkit.register_dataframe("scores", scores)
@@ -579,7 +634,11 @@ class TestExecuteSQL:
             assert result.column_names == ["student", "score"]
 
     def test_execute_empty_result_success(self, toolkit: DataFrameToolkit) -> None:
-        """Given query that returns no rows, When called, Then returns DataFrameReference with zero rows."""
+        """Given query that returns no rows, When called, Then returns DataFrameReference with zero rows.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"id": [1, 2, 3], "status": ["active", "active", "active"]})
         ref = toolkit.register_dataframe("data", df)
@@ -597,7 +656,11 @@ class TestExecuteSQL:
             assert result.column_names == ["id", "status"]
 
     def test_execute_union_query_success(self, toolkit: DataFrameToolkit) -> None:
-        """Given UNION query combining two tables, When called, Then returns combined result."""
+        """Given UNION query combining two tables, When called, Then returns combined result.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df1 = pl.DataFrame({"id": [1, 2], "type": ["A", "A"]})
         df2 = pl.DataFrame({"id": [3, 4], "type": ["B", "B"]})
@@ -622,7 +685,11 @@ class TestExecuteSQL:
             assert result.column_names == ["id", "type"]
 
     def test_execute_sql_tool_invoke(self, toolkit: DataFrameToolkit) -> None:
-        """Given toolkit with registered DataFrame, When execute_sql tool invoked, Then returns DataFrameReference."""
+        """Given toolkit with registered DataFrame, When execute_sql tool invoked, Then returns DataFrameReference.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
         # Arrange
         df = pl.DataFrame({"id": [1, 2, 3], "amount": [100, 200, 300]})
         ref = toolkit.register_dataframe("sales", df)
@@ -645,3 +712,590 @@ class TestExecuteSQL:
             assert result.description == "Sales over $150"
         with check:
             assert result.num_rows == 2  # IDs 2 and 3 have amount > 150
+
+
+class TestViewAsMarkdownTable:
+    """Tests for DataFrameToolkit.view_as_markdown_table method."""
+
+    @pytest.fixture
+    def toolkit(self) -> DataFrameToolkit:
+        """Create a toolkit instance for testing.
+
+        Returns:
+            DataFrameToolkit: Fresh toolkit instance with no DataFrames registered.
+        """
+        return DataFrameToolkit()
+
+    def test_view_by_name_returns_string(self, toolkit: DataFrameToolkit) -> None:
+        """Given registered DataFrame, When view_as_markdown_table by name, Then returns markdown table with data.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"product": ["Widget", "Gadget", "Gizmo"], "price": [4.99, 12.50, 7.25]})
+        toolkit.register_dataframe("sales", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("sales")
+
+        # Assert
+        with check:
+            assert isinstance(result, str)
+        with check:
+            assert "|" in result
+        with check:
+            assert "---" in result
+        with check:
+            assert "Widget" in result
+        with check:
+            assert "12.5" in result
+        with check:
+            assert "Gizmo" in result
+
+    def test_view_by_id_returns_string(self, toolkit: DataFrameToolkit) -> None:
+        """Given registered DataFrame, When view_as_markdown_table by ID, Then returns markdown table with data.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"city": ["Oslo", "Lima", "Cairo"], "temp_c": [-5, 22, 35]})
+        ref = toolkit.register_dataframe("sales", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table(ref.id)
+
+        # Assert
+        with check:
+            assert isinstance(result, str)
+        with check:
+            assert "|" in result
+        with check:
+            assert "---" in result
+        with check:
+            assert "Oslo" in result
+        with check:
+            assert "22" in result
+        with check:
+            assert "35" in result
+
+    def test_view_not_found_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given empty toolkit, When view_as_markdown_table with nonexistent identifier, Then returns ToolCallError.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange - empty toolkit
+
+        # Act
+        result = toolkit.view_as_markdown_table("nonexistent")
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "DataFrameNotFound"
+        with check:
+            assert "nonexistent" in result.message
+
+    def test_view_not_found_error_has_available_info(self, toolkit: DataFrameToolkit) -> None:
+        """Given toolkit with DataFrames, When not found, Then error has available names and IDs.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        ref1 = toolkit.register_dataframe("df1", pl.DataFrame({"a": [1, 2]}))
+        ref2 = toolkit.register_dataframe("df2", pl.DataFrame({"b": [3, 4]}))
+
+        # Act
+        result = toolkit.view_as_markdown_table("nonexistent")
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert "available_names" in result.details
+        available_names = result.details["available_names"]
+        assert isinstance(available_names, list)
+        with check:
+            assert set(available_names) == {"df1", "df2"}
+        with check:
+            assert "available_ids" in result.details
+        available_ids = result.details["available_ids"]
+        assert isinstance(available_ids, list)
+        with check:
+            assert set(available_ids) == {ref1.id, ref2.id}
+
+    def test_view_with_columns_filter(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame with columns [a, b, c], When columns=["a", "c"], Then result contains only a and c.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", columns=["a", "c"])
+
+        # Assert
+        assert isinstance(result, str)
+        header_line = result.strip().split("\n")[0]
+        header_cols = [col.strip() for col in header_line.strip("|").split("|")]
+        with check:
+            assert "a" in header_cols
+        with check:
+            assert "c" in header_cols
+        with check:
+            assert "b" not in header_cols
+
+    def test_view_with_invalid_columns_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When columns contain nonexistent column, Then returns ToolCallError.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"name": ["Ava", "Ben", "Cal"], "age": [28, 34, 45]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", columns=["nonexistent"])
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidColumns"
+
+    def test_view_with_invalid_columns_error_has_details(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When invalid columns, Then error has available and invalid columns.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"color": ["red", "blue", "green"], "hex": ["#FF0000", "#0000FF", "#00FF00"]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", columns=["color", "nonexistent", "missing"])
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert "available_columns" in result.details
+        available_columns = result.details["available_columns"]
+        assert isinstance(available_columns, list)
+        with check:
+            assert set(available_columns) == {"color", "hex"}
+        with check:
+            assert "requested_columns" in result.details
+        with check:
+            assert result.details["requested_columns"] == ["color", "nonexistent", "missing"]
+        with check:
+            assert "invalid_columns" in result.details
+        invalid = result.details["invalid_columns"]
+        assert invalid is not None
+        assert isinstance(invalid, list)
+        with check:
+            assert set(invalid) == {"nonexistent", "missing"}
+
+    def test_view_with_duplicate_columns_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When columns contain duplicates, Then returns ToolCallError with DuplicateColumns.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"sku": ["A1", "B2", "C3"], "qty": [50, 120, 75]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", columns=["sku", "sku"])
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "DuplicateColumns"
+        with check:
+            assert "duplicate_columns" in result.details
+        with check:
+            assert result.details["duplicate_columns"] == ["sku"]
+        with check:
+            assert result.details["requested_columns"] == ["sku", "sku"]
+
+    def test_view_with_num_rows_zero_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When num_rows=0, Then returns ToolCallError with InvalidArgument.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"item": ["pen", "book", "tape"], "cost": [1.50, 8.99, 3.25]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=0)
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidArgument"
+        with check:
+            assert "num_rows" in result.message
+
+    def test_view_with_negative_num_rows_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When num_rows=-1, Then returns ToolCallError with InvalidArgument.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"fruit": ["apple", "banana", "cherry"], "count": [12, 7, 25]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=-1)
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidArgument"
+
+    def test_view_with_num_rows_exceeding_dataframe_size(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame with 3 rows, When num_rows=100, Then returns all rows without error.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"country": ["Japan", "Brazil", "Kenya"], "code": ["JP", "BR", "KE"]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=100)
+
+        # Assert
+        with check:
+            assert isinstance(result, str)
+        with check:
+            assert "Japan" in result
+        with check:
+            assert "BR" in result
+        with check:
+            assert "Kenya" in result
+
+    def test_view_with_empty_columns_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When columns=[], Then returns ToolCallError with InvalidArgument.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"dept": ["HR", "Eng", "Sales"], "budget": [50000, 120000, 80000]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", columns=[])
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidArgument"
+        with check:
+            assert "empty" in result.message
+
+    def test_view_with_num_rows(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame with 20 rows, When num_rows=5, Then result shows 5 data rows plus ellipsis.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"id": list(range(1, 21)), "value": list(range(100, 120))})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=5)
+
+        # Assert
+        assert isinstance(result, str)
+        with check:
+            assert "|" in result
+        with check:
+            assert "---" in result
+        # When num_rows < total rows, table should include ellipsis indicator
+        with check:
+            assert "…" in result or "..." in result
+        # Verify row count: header + separator + 5 data rows + 1 ellipsis = content lines with pipes
+        data_lines = [line for line in result.strip().split("\n") if line.strip().startswith("|")]
+        content_rows = len(data_lines) - 2  # Subtract header and separator
+        with check:
+            assert content_rows == 6  # 5 data + 1 ellipsis
+
+    def test_view_with_sample(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame with 100 rows, When sample=True, num_rows=5, Then returns 5 sampled rows.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"id": list(range(1, 101)), "value": list(range(1000, 1100))})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=5, sample=True)
+
+        # Assert
+        assert isinstance(result, str)
+        with check:
+            assert "|" in result
+        with check:
+            assert "---" in result
+        # Verify correct number of sampled rows
+        data_lines = [line for line in result.strip().split("\n") if line.strip().startswith("|")]
+        content_rows = len(data_lines) - 2  # Subtract header and separator
+        with check:
+            assert content_rows == 5
+
+    def test_view_with_sample_and_seed_reproducible(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When called twice with same seed, Then results are identical.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"id": list(range(1, 101)), "value": list(range(1000, 1100))})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result1 = toolkit.view_as_markdown_table("data", num_rows=10, sample=True, seed=42)
+        result2 = toolkit.view_as_markdown_table("data", num_rows=10, sample=True, seed=42)
+
+        # Assert
+        with check:
+            assert isinstance(result1, str)
+        with check:
+            assert isinstance(result2, str)
+        with check:
+            assert result1 == result2  # Same seed produces same result
+
+    def test_view_with_seed_without_sample_returns_tool_call_error(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame, When seed provided without sample=True, Then returns ToolCallError.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"name": ["Alice", "Bob"], "score": [95.5, 87.3]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", seed=42)
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidArgument"
+        with check:
+            assert "seed" in result.message
+        with check:
+            assert result.details["seed"] == 42
+        with check:
+            assert result.details["sample"] is False
+
+    def test_view_with_num_rows_equal_to_dataframe_size(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame with 3 rows, When num_rows=3, Then returns all rows without ellipsis.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"city": ["NYC", "LA", "CHI"], "pop": [8_336_817, 3_979_576, 2_693_976]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data", num_rows=3)
+
+        # Assert
+        assert isinstance(result, str)
+        with check:
+            assert "NYC" in result
+        with check:
+            assert "LA" in result
+        with check:
+            assert "CHI" in result
+        with check:
+            assert "…" not in result and "..." not in result
+
+    def test_view_with_varied_data_types(self, toolkit: DataFrameToolkit) -> None:
+        """Given DataFrame with strings, nulls, and large numbers, When viewed, Then renders correctly.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({
+            "label": ["hello world", None, "special: <>&\"'"],
+            "amount": [0, 999_999_999, -42],
+        })
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        result = toolkit.view_as_markdown_table("data")
+
+        # Assert
+        assert isinstance(result, str)
+        with check:
+            assert "hello world" in result
+        with check:
+            assert "null" in result
+        with check:
+            assert "999999999" in result
+        with check:
+            assert "-42" in result
+
+    def test_view_tool_invoke(self, toolkit: DataFrameToolkit) -> None:
+        """Given toolkit, When view_as_markdown_table tool invoked via LangChain, Then returns markdown string.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"region": ["North", "South", "East"], "revenue": [4500, 3200, 5800]})
+        toolkit.register_dataframe("sales", df)
+
+        # Act
+        tools = toolkit.get_core_tools()
+        tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        result = tool_view.invoke({"identifier": "sales"})
+
+        # Assert
+        assert isinstance(result, str)
+        with check:
+            assert "|" in result
+        with check:
+            assert "---" in result
+        with check:
+            assert "North" in result
+        with check:
+            assert "5800" in result
+
+    def test_view_tool_invoke_with_optional_params(self, toolkit: DataFrameToolkit) -> None:
+        """Given toolkit, When tool invoked with columns and num_rows, Then returns filtered markdown.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        df = pl.DataFrame({"planet": ["Mars", "Venus", "Earth"], "moons": [2, 0, 1], "rings": [False, False, False]})
+        toolkit.register_dataframe("data", df)
+
+        # Act
+        tools = toolkit.get_core_tools()
+        tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        result = tool_view.invoke({"identifier": "data", "columns": ["planet", "moons"], "num_rows": 2})
+
+        # Assert
+        assert isinstance(result, str)
+        header_line = result.strip().split("\n")[0]
+        with check:
+            assert "planet" in header_line
+        with check:
+            assert "moons" in header_line
+        with check:
+            assert "rings" not in header_line
+
+    def test_view_tool_schema_excludes_self(self, toolkit: DataFrameToolkit) -> None:
+        """Given toolkit, When tool schema inspected, Then 'self' not in properties.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        toolkit.register_dataframe("test", pl.DataFrame({"a": [1, 2, 3]}))
+
+        # Act
+        tools = toolkit.get_core_tools()
+        tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        tool_schema = tool_view.args_schema.model_json_schema()
+
+        # Assert - 'self' should not be in the properties
+        with check:
+            assert "self" not in tool_schema.get("properties", {})
+        with check:
+            assert "identifier" in tool_schema.get("properties", {})
+
+    def test_view_tool_schema_columns_property(self, toolkit: DataFrameToolkit) -> None:
+        """Given toolkit, When tool schema inspected, Then columns property has correct array type.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        toolkit.register_dataframe("test", pl.DataFrame({"a": [1, 2, 3]}))
+
+        # Act
+        tools = toolkit.get_core_tools()
+        tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        tool_schema = tool_view.args_schema.model_json_schema()
+        columns_prop = tool_schema["properties"]["columns"]
+
+        # Assert - columns should accept array of strings or null
+        # LangChain may represent nullable types using anyOf
+        if "anyOf" in columns_prop:
+            type_options = [opt.get("type") for opt in columns_prop["anyOf"]]
+            with check:
+                assert "array" in type_options
+            array_option = next(opt for opt in columns_prop["anyOf"] if opt.get("type") == "array")
+            with check:
+                assert array_option.get("items", {}).get("type") == "string"
+        else:
+            with check:
+                assert columns_prop.get("type") == "array"
+            with check:
+                assert columns_prop.get("items", {}).get("type") == "string"
+
+    def test_view_included_in_get_tools(self, toolkit: DataFrameToolkit) -> None:
+        """Given toolkit, When get_tools called, Then view_as_markdown_table in tool names.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        toolkit.register_dataframe("test", pl.DataFrame({"a": [1, 2, 3]}))
+
+        # Act
+        tools = toolkit.get_tools()
+        tool_names = {t.name for t in tools}
+
+        # Assert
+        with check:
+            assert "view_as_markdown_table" in tool_names
+
+    def test_view_included_in_get_core_tools(self, toolkit: DataFrameToolkit) -> None:
+        """Given toolkit, When get_core_tools called, Then view_as_markdown_table in tool names.
+
+        Args:
+            toolkit (DataFrameToolkit): Toolkit instance from fixture.
+        """
+        # Arrange
+        toolkit.register_dataframe("test", pl.DataFrame({"a": [1, 2, 3]}))
+
+        # Act
+        tools = toolkit.get_core_tools()
+        tool_names = {t.name for t in tools}
+
+        # Assert
+        with check:
+            assert "view_as_markdown_table" in tool_names

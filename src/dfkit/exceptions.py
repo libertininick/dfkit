@@ -1,16 +1,18 @@
-"""Custom exceptions for SQL validation in the DataFrame toolkit.
+"""Custom exceptions for the DataFrame toolkit.
 
-This module defines a hierarchy of exceptions for SQL validation errors:
+This module defines exceptions for DataFrame column validation and SQL validation:
 
+Column validation exceptions (subclass ValueError):
+- ColumnsNotFoundError: Raised when requested columns do not exist in a DataFrame.
+- DuplicateColumnsError: Raised when duplicate column names are provided.
+
+SQL validation exceptions (subclass Exception):
 - SQLValidationError: Base class for all SQL validation errors. Catch this to
   handle any SQL validation failure.
 - SQLSyntaxError: Raised when SQL has invalid syntax (parse errors).
 - SQLTableError: Raised when SQL references non-existent tables.
 - SQLColumnError: Raised when SQL references non-existent columns.
 - SQLBlacklistedCommandError: Raised when SQL contains a blacklisted command type.
-
-All exceptions store the query that caused the error and additional
-context-specific information for debugging.
 """
 
 from __future__ import annotations
@@ -39,6 +41,76 @@ class ParseErrorDict(TypedDict, total=False):
     start_context: str
     highlight: str
     end_context: str
+
+
+class ColumnsNotFoundError(ValueError):
+    """Raised when requested columns do not exist in a DataFrame.
+
+    Attributes:
+        missing_columns (list[str]): Column names that were not found.
+        available_columns (list[str]): Column names present in the DataFrame.
+
+    Examples:
+        >>> err = ColumnsNotFoundError(
+        ...     missing_columns=["x", "y"],
+        ...     available_columns=["a", "b", "c"],
+        ... )
+        >>> err.missing_columns
+        ['x', 'y']
+    """
+
+    missing_columns: list[str]
+    available_columns: list[str]
+
+    def __init__(
+        self,
+        missing_columns: list[str],
+        available_columns: list[str],
+    ) -> None:
+        """Initialize ColumnsNotFoundError.
+
+        Args:
+            missing_columns (list[str]): Column names not found in the DataFrame.
+            available_columns (list[str]): Column names present in the DataFrame.
+        """
+        super().__init__(f"Columns not found in DataFrame: {sorted(missing_columns)}")
+        self.missing_columns = missing_columns
+        self.available_columns = available_columns
+
+
+class DuplicateColumnsError(ValueError):
+    """Raised when duplicate column names are provided.
+
+    Attributes:
+        columns (list[str]): The column list that contains duplicates.
+        duplicate_columns (list[str]): The specific column names that are
+            duplicated (each listed once).
+
+    Examples:
+        >>> err = DuplicateColumnsError(columns=["a", "a", "b"])
+        >>> err.columns
+        ['a', 'a', 'b']
+        >>> err.duplicate_columns
+        ['a']
+    """
+
+    columns: list[str]
+    duplicate_columns: list[str]
+
+    def __init__(self, columns: list[str]) -> None:
+        """Initialize DuplicateColumnsError.
+
+        Args:
+            columns (list[str]): The column list containing duplicates.
+        """
+        super().__init__("Duplicate column names are not allowed")
+        self.columns = columns
+        seen: set[str] = set()
+        self.duplicate_columns = []
+        for col in columns:
+            if col in seen:
+                self.duplicate_columns.append(col)
+            seen.add(col)
 
 
 class SQLValidationError(Exception):

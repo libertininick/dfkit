@@ -6,6 +6,8 @@ from collections.abc import Sequence
 
 import polars as pl
 
+from dfkit.exceptions import ColumnsNotFoundError, DuplicateColumnsError
+
 
 def get_series_description(
     series: pl.Series, percentiles: Sequence[float] = (0.25, 0.5, 0.75)
@@ -118,11 +120,18 @@ def _validate_columns(columns: Sequence[str], df_columns: Sequence[str]) -> None
         df_columns (Sequence[str]): Column names present in the DataFrame.
 
     Raises:
-        ValueError: If columns contain duplicates or any do not exist in
-            the DataFrame.
+        ValueError: If columns list is empty.
+        DuplicateColumnsError: If columns contain duplicates.
+        ColumnsNotFoundError: If any columns do not exist in the DataFrame.
     """
+    if len(columns) == 0:
+        msg = "columns list must not be empty; pass None to include all columns"
+        raise ValueError(msg)
     if len(columns) != len(set(columns)):
-        raise ValueError("Duplicate column names are not allowed")
+        raise DuplicateColumnsError(columns=list(columns))
     extra_columns = set(columns) - set(df_columns)
     if extra_columns:
-        raise ValueError(f"Columns not found in DataFrame: {sorted(extra_columns)}")
+        raise ColumnsNotFoundError(
+            missing_columns=sorted(extra_columns),
+            available_columns=list(df_columns),
+        )
