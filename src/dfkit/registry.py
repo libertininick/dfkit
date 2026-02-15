@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import dataclasses
+from dataclasses import dataclass, field
 from types import MappingProxyType
 
 import polars as pl
@@ -12,7 +12,7 @@ from dfkit.identifier import DataFrameId
 from dfkit.models import DataFrameReference
 
 
-@dataclasses.dataclass
+@dataclass
 class DataFrameRegistry:
     """Groups a DataFrameContext and its associated references.
 
@@ -23,8 +23,8 @@ class DataFrameRegistry:
         context (DataFrameContext): The SQL-capable DataFrame registry.
     """
 
-    context: DataFrameContext = dataclasses.field(default_factory=DataFrameContext)
-    _references: dict[DataFrameId, DataFrameReference] = dataclasses.field(default_factory=dict)
+    context: DataFrameContext = field(default_factory=DataFrameContext)
+    _references: dict[DataFrameId, DataFrameReference] = field(default_factory=dict)
 
     @property
     def references(self) -> MappingProxyType[DataFrameId, DataFrameReference]:
