@@ -44,6 +44,9 @@ class ToolModule(Protocol):
     For configurable modules needing additional parameters beyond the context,
     use a factory function that returns a configured class::
 
+        from langchain_core.tools import tool
+        from dfkit.models import ToolCallError
+
         def create_module(param: str) -> type:
             class ConfiguredModule:
                 def __init__(self, context: ToolModuleContext) -> None:

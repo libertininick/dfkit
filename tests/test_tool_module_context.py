@@ -53,6 +53,25 @@ def context_with_data() -> ContextFixture:
 class TestReferencesProperty:
     """Tests for ToolModuleContext.references property."""
 
+    def test_references_returns_empty_tuple_when_empty(self) -> None:
+        """Verify references returns empty tuple when no DataFrames registered.
+
+        When the registry is empty (no DataFrames registered), the references
+        property should return an empty tuple.
+        """
+        # Arrange
+        toolkit = DataFrameToolkit()
+        context = toolkit._tool_module_context
+
+        # Act
+        references = context.references
+
+        # Assert
+        with check:
+            assert isinstance(references, tuple), "references should return a tuple"
+        with check:
+            assert len(references) == 0, "should be empty when registry is empty"
+
     def test_references_returns_all_registered(self, context_with_data: ContextFixture) -> None:
         """Verify references returns tuple of all registered references.
 
@@ -331,6 +350,117 @@ class TestRegisterDataFrame:
             assert result.parent_ids == [ref.id], "should have correct parent_ids"
         with check:
             assert result.source_query == source_query, "should have correct source_query"
+
+    def test_register_with_description(self, context_with_data: ContextFixture) -> None:
+        """Verify register sets description metadata correctly.
+
+        When given description parameter, register should create a
+        DataFrameReference with that description field set.
+
+        Args:
+            context_with_data (ContextFixture): Fixture providing context, toolkit, and reference.
+        """
+        # Arrange
+        context = context_with_data.context
+        new_df = pl.DataFrame({"product": ["Widget", "Gadget"], "price": [9.99, 19.99]})
+        description = "Product catalog with pricing information"
+
+        # Act
+        result = context.register_dataframe(
+            "products",
+            new_df,
+            description=description,
+        )
+
+        # Assert
+        with check:
+            assert isinstance(result, DataFrameReference), "should return DataFrameReference"
+        with check:
+            assert result.description == description, "should have correct description"
+
+    def test_register_with_column_descriptions(self, context_with_data: ContextFixture) -> None:
+        """Verify register sets column_descriptions metadata correctly.
+
+        When given column_descriptions parameter, register should create a
+        DataFrameReference with those column descriptions set in the column summaries.
+
+        Args:
+            context_with_data (ContextFixture): Fixture providing context, toolkit, and reference.
+        """
+        # Arrange
+        context = context_with_data.context
+        new_df = pl.DataFrame({"user_id": [101, 102], "score": [85.5, 92.3]})
+        column_descriptions = {
+            "user_id": "Unique identifier for the user",
+            "score": "Performance score as a percentage",
+        }
+
+        # Act
+        result = context.register_dataframe(
+            "user_scores",
+            new_df,
+            column_descriptions=column_descriptions,
+        )
+
+        # Assert
+        with check:
+            assert isinstance(result, DataFrameReference), "should return DataFrameReference"
+        with check:
+            assert result.column_summaries["user_id"].description == column_descriptions["user_id"], (
+                "should have correct user_id description"
+            )
+        with check:
+            assert result.column_summaries["score"].description == column_descriptions["score"], (
+                "should have correct score description"
+            )
+
+    def test_register_with_all_optional_parameters(self, context_with_data: ContextFixture) -> None:
+        """Verify register handles all optional parameters together.
+
+        When given description, parent_ids, source_query, and column_descriptions,
+        register should create a DataFrameReference with all metadata fields set.
+
+        Args:
+            context_with_data (ContextFixture): Fixture providing context, toolkit, and reference.
+        """
+        # Arrange
+        context = context_with_data.context
+        ref = context_with_data.ref
+        derived_df = pl.DataFrame({"product": ["Widget"], "total_sales": [500]})
+        description = "Aggregated sales by product"
+        column_descriptions = {
+            "product": "Product name",
+            "total_sales": "Total revenue for this product",
+        }
+        source_query = f"SELECT product, SUM(amount) AS total_sales FROM {ref.id} GROUP BY product"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
+
+        # Act
+        result = context.register_dataframe(
+            "product_totals",
+            derived_df,
+            description=description,
+            parent_ids=[ref.id],
+            source_query=source_query,
+            column_descriptions=column_descriptions,
+        )
+
+        # Assert
+        with check:
+            assert isinstance(result, DataFrameReference), "should return DataFrameReference"
+        with check:
+            assert result.description == description, "should have correct description"
+        with check:
+            assert result.parent_ids == [ref.id], "should have correct parent_ids"
+        with check:
+            assert result.source_query == source_query, "should have correct source_query"
+        with check:
+            assert result.column_summaries["product"].description == column_descriptions["product"], (
+                "should have correct product description"
+            )
+        with check:
+            assert result.column_summaries["total_sales"].description == column_descriptions["total_sales"], (
+                "should have correct total_sales description"
+            )
 
 
 class TestRegisteredDataFrameVisibility:

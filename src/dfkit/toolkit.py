@@ -224,6 +224,12 @@ class DataFrameToolkit:
         per-agent customization where different agents receive different guidance
         based on their tool subsets.
 
+        Note:
+            Modules with zero tools (after exclusions) have their system prompt
+            silently omitted from the combined prompt. Factory-generated classes
+            with the same ``__name__`` will produce duplicate section headers in
+            the system prompt.
+
         Args:
             *module_classes (type[ToolModule]): Optional tool module classes to include.
                 Modules are instantiated on first access and cached.
@@ -769,13 +775,10 @@ class DataFrameToolkit:
             TypeError: If the module class cannot be instantiated with a
                 ToolModuleContext argument.
         """
-        # Not thread-safe: cache check and creation are separate steps
         if module_class not in self._module_cache:
             try:
-                # Get or create the module instance and cache it
-                # Using setdefault ensures only one instance is created even if multiple threads access simultaneously
-                self._module_cache.setdefault(module_class, module_class(self._tool_module_context))
-            except Exception as e:
+                self._module_cache[module_class] = module_class(self._tool_module_context)
+            except TypeError as e:
                 msg = (
                     f"Failed to instantiate {module_class.__name__}. "
                     f"Tool modules must accept a single ToolModuleContext argument: "

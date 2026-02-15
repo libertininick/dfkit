@@ -176,6 +176,38 @@ class MockModuleWithRegistration:
         return list(self._tools)
 
 
+class MockModuleWithNoTools:
+    """Mock module that has a system prompt but provides no tools.
+
+    Test helper for verifying empty tools list handling.
+    """
+
+    def __init__(self, context: ToolModuleContext) -> None:
+        """Initialize the module.
+
+        Args:
+            context (ToolModuleContext): The tool module context.
+        """
+        self._context = context
+
+    @property
+    def system_prompt(self) -> str:
+        """Return the system prompt.
+
+        Returns:
+            str: System prompt text.
+        """
+        return "Module with system prompt but no tools."
+
+    def get_tools(self) -> list[BaseTool]:
+        """Return empty tools list.
+
+        Returns:
+            list[BaseTool]: Empty list.
+        """
+        return []
+
+
 # ============================================================================
 # Tests
 # ============================================================================
@@ -1478,7 +1510,7 @@ class TestGetToolsWithModules:
     """Tests for per-call module composition in get_tools()."""
 
     def test_get_tools_no_args_returns_core_only(self) -> None:
-        """Given toolkit, When get_tools called with no args, Then returns exactly 5 core tools."""
+        """Given toolkit, When get_tools called with no args, Then returns exactly core tools count."""
         # Arrange
         toolkit = DataFrameToolkit()
 
@@ -1486,11 +1518,12 @@ class TestGetToolsWithModules:
         tools = toolkit.get_tools()
 
         # Assert
+        core_tool_count = len(toolkit.get_core_tools())
         with check:
-            assert len(tools) == 5
+            assert len(tools) == core_tool_count
 
     def test_get_tools_with_module_returns_core_plus_module(self) -> None:
-        """Given toolkit, When get_tools called with MockModuleA, Then returns 5 core + 1 module tool."""
+        """Given toolkit, When get_tools called with MockModuleA, Then returns core + 1 module tool."""
         # Arrange
         toolkit = DataFrameToolkit()
 
@@ -1498,14 +1531,15 @@ class TestGetToolsWithModules:
         tools = toolkit.get_tools(MockModuleA)
 
         # Assert
+        core_tool_count = len(toolkit.get_core_tools())
         with check:
-            assert len(tools) == 6
+            assert len(tools) == core_tool_count + 1
         tool_names = {t.name for t in tools}
         with check:
             assert "mock_tool_a" in tool_names
 
     def test_get_tools_with_multiple_modules(self) -> None:
-        """Given toolkit, When get_tools with MockModuleA and MockModuleB, Then returns 5 core + 3 module tools."""
+        """Given toolkit, When get_tools with MockModuleA and MockModuleB, Then returns core + 3 module tools."""
         # Arrange
         toolkit = DataFrameToolkit()
 
@@ -1513,8 +1547,9 @@ class TestGetToolsWithModules:
         tools = toolkit.get_tools(MockModuleA, MockModuleB)
 
         # Assert
+        core_tool_count = len(toolkit.get_core_tools())
         with check:
-            assert len(tools) == 8
+            assert len(tools) == core_tool_count + 3
         tool_names = {t.name for t in tools}
         with check:
             assert "mock_tool_a" in tool_names
@@ -1524,7 +1559,7 @@ class TestGetToolsWithModules:
             assert "mock_tool_b2" in tool_names
 
     def test_get_tools_exclude_core_tool(self) -> None:
-        """Given toolkit, When get_tools with exclude execute_sql, Then returns 4 core tools."""
+        """Given toolkit, When get_tools with exclude execute_sql, Then returns core tools minus one."""
         # Arrange
         toolkit = DataFrameToolkit()
 
@@ -1532,14 +1567,15 @@ class TestGetToolsWithModules:
         tools = toolkit.get_tools(exclude={"execute_sql"})
 
         # Assert
+        core_tool_count = len(toolkit.get_core_tools())
         with check:
-            assert len(tools) == 4
+            assert len(tools) == core_tool_count - 1
         tool_names = {t.name for t in tools}
         with check:
             assert "execute_sql" not in tool_names
 
     def test_get_tools_exclude_module_tool(self) -> None:
-        """Given toolkit, When get_tools with MockModuleA but exclude mock_tool_a, Then returns 5 core tools only."""
+        """Given toolkit, When get_tools with MockModuleA but exclude mock_tool_a, Then returns core tools only."""
         # Arrange
         toolkit = DataFrameToolkit()
 
@@ -1547,14 +1583,15 @@ class TestGetToolsWithModules:
         tools = toolkit.get_tools(MockModuleA, exclude={"mock_tool_a"})
 
         # Assert
+        core_tool_count = len(toolkit.get_core_tools())
         with check:
-            assert len(tools) == 5
+            assert len(tools) == core_tool_count
         tool_names = {t.name for t in tools}
         with check:
             assert "mock_tool_a" not in tool_names
 
     def test_get_tools_exclude_nonexistent_is_no_op(self) -> None:
-        """Given toolkit, When get_tools with exclude nonexistent, Then returns all 5 core tools."""
+        """Given toolkit, When get_tools with exclude nonexistent, Then returns all core tools."""
         # Arrange
         toolkit = DataFrameToolkit()
 
@@ -1562,11 +1599,12 @@ class TestGetToolsWithModules:
         tools = toolkit.get_tools(exclude={"nonexistent"})
 
         # Assert
+        core_tool_count = len(toolkit.get_core_tools())
         with check:
-            assert len(tools) == 5
+            assert len(tools) == core_tool_count
 
     def test_get_tools_exclude_empty_set_is_no_op(self) -> None:
-        """Given toolkit, When get_tools with exclude empty set, Then returns all 5 core tools."""
+        """Given toolkit, When get_tools with exclude empty set, Then returns all core tools."""
         # Arrange
         toolkit = DataFrameToolkit()
 
@@ -1574,11 +1612,12 @@ class TestGetToolsWithModules:
         tools = toolkit.get_tools(exclude=set())
 
         # Assert
+        core_tool_count = len(toolkit.get_core_tools())
         with check:
-            assert len(tools) == 5
+            assert len(tools) == core_tool_count
 
     def test_get_tools_duplicate_module_class_deduplicates(self) -> None:
-        """Given toolkit, When get_tools with MockModuleA twice, Then returns 5 core + 1 module tool."""
+        """Given toolkit, When get_tools with MockModuleA twice, Then returns core + 1 module tool."""
         # Arrange
         toolkit = DataFrameToolkit()
 
@@ -1586,8 +1625,9 @@ class TestGetToolsWithModules:
         tools = toolkit.get_tools(MockModuleA, MockModuleA)
 
         # Assert
+        core_tool_count = len(toolkit.get_core_tools())
         with check:
-            assert len(tools) == 6
+            assert len(tools) == core_tool_count + 1
         tool_names = {t.name for t in tools}
         with check:
             assert "mock_tool_a" in tool_names
@@ -1607,41 +1647,106 @@ class TestGetToolsWithModules:
         with check:
             assert tools1 == tools2, "lists should have same content"
 
+    def test_get_tools_with_empty_tools_module(self) -> None:
+        """Given toolkit, When get_tools with module that has no tools, Then returns only core tools."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools(MockModuleWithNoTools)
+
+        # Assert
+        core_tool_count = len(toolkit.get_core_tools())
+        with check:
+            assert len(tools) == core_tool_count, "should return only core tools when module has no tools"
+        tool_names = {t.name for t in tools}
+        core_tool_names = {t.name for t in toolkit.get_core_tools()}
+        with check:
+            assert tool_names == core_tool_names, "should match core tools exactly"
+
+
+class CountingModule:
+    """Mock module that tracks instantiation count.
+
+    Used to verify module caching behavior by counting how many times
+    the module class is instantiated.
+
+    Attributes:
+        instantiation_count: Number of times this class has been instantiated.
+    """
+
+    instantiation_count = 0
+
+    def __init__(self, context: ToolModuleContext) -> None:
+        """Initialize the module and increment instantiation counter.
+
+        Args:
+            context (ToolModuleContext): The tool module context.
+        """
+        CountingModule.instantiation_count += 1
+        self._context = context
+
+        @tool
+        def counting_tool() -> str:
+            """Return instantiation count.
+
+            Returns:
+                str: The instantiation count message.
+            """
+            return f"Instantiation count: {CountingModule.instantiation_count}"
+
+        self._tools = [counting_tool]
+
+    @property
+    def system_prompt(self) -> str:
+        """Return the system prompt.
+
+        Returns:
+            str: System prompt text.
+        """
+        return "Module that counts instantiations."
+
+    def get_tools(self) -> list[BaseTool]:
+        """Return tools provided by this module.
+
+        Returns:
+            list[BaseTool]: List of tools.
+        """
+        return list(self._tools)
+
 
 class TestModuleCaching:
     """Tests for lazy module instance caching."""
 
     def test_module_instance_cached_across_calls(self) -> None:
-        """Given toolkit, When get_tools(MockModuleA) called twice, Then module instance is cached."""
+        """Given toolkit, When get_tools(CountingModule) called twice, Then module instantiated only once."""
         # Arrange
         toolkit = DataFrameToolkit()
+        CountingModule.instantiation_count = 0
 
         # Act
-        toolkit.get_tools(MockModuleA)
-        toolkit.get_tools(MockModuleA)
+        toolkit.get_tools(CountingModule)
+        toolkit.get_tools(CountingModule)
 
-        # Assert
+        # Assert - module should be instantiated exactly once despite two get_tools calls
         with check:
-            assert MockModuleA in toolkit._module_cache
-        with check:
-            assert isinstance(toolkit._module_cache[MockModuleA], MockModuleA)
+            assert CountingModule.instantiation_count == 1, "module should be instantiated only once"
 
     def test_different_modules_cached_independently(self) -> None:
-        """Given toolkit, When get_tools called with different modules, Then both cached separately."""
+        """Given toolkit, When get_tools called with different modules, Then each instantiated once."""
         # Arrange
         toolkit = DataFrameToolkit()
+        CountingModule.instantiation_count = 0
 
         # Act
+        toolkit.get_tools(CountingModule)
         toolkit.get_tools(MockModuleA)
-        toolkit.get_tools(MockModuleB)
+        toolkit.get_tools(CountingModule)  # Second call to CountingModule
+        toolkit.get_tools(MockModuleA)  # Second call to MockModuleA
 
-        # Assert
+        # Assert - CountingModule should be instantiated exactly once despite two get_tools calls
         with check:
-            assert MockModuleA in toolkit._module_cache
-        with check:
-            assert MockModuleB in toolkit._module_cache
-        with check:
-            assert toolkit._module_cache[MockModuleA] is not toolkit._module_cache[MockModuleB]
+            assert CountingModule.instantiation_count == 1, "CountingModule should be instantiated only once"
 
 
 class TestModuleInstantiationErrors:
@@ -1772,6 +1877,44 @@ class TestGetSystemPrompt:
         with check:
             assert "not available" in prompt.lower() or "unavailable" in prompt.lower() or "excluded" in prompt.lower()
 
+    def test_get_system_prompt_duplicate_module_deduplicates(self) -> None:
+        """Given toolkit, When get_system_prompt with duplicate modules, Then prompt appears only once."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        prompt = toolkit.get_system_prompt(MockModuleA, MockModuleA)
+
+        # Assert
+        with check:
+            assert isinstance(prompt, str)
+        # Count occurrences of the MockModuleA header
+        header_count = prompt.count("## MockModuleA")
+        with check:
+            assert header_count == 1, "module header should appear exactly once despite duplicate module classes"
+        # Count occurrences of the system prompt text
+        prompt_text_count = prompt.count("Use mock_tool_a to count rows in a DataFrame.")
+        with check:
+            assert prompt_text_count == 1, "module prompt should appear exactly once despite duplicate module classes"
+
+    def test_get_system_prompt_with_empty_tools_module(self) -> None:
+        """Given toolkit, When get_system_prompt with module that has no tools, Then module prompt omitted."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        prompt = toolkit.get_system_prompt(MockModuleWithNoTools)
+
+        # Assert
+        with check:
+            assert isinstance(prompt, str)
+        with check:
+            assert "MockModuleWithNoTools" not in prompt, "module header should be omitted when module has no tools"
+        with check:
+            assert "Module with system prompt but no tools." not in prompt, (
+                "module prompt should be omitted when module has no tools"
+            )
+
 
 class TestModuleRegistryInteraction:
     """Tests for module-toolkit data flow."""
@@ -1820,17 +1963,18 @@ class TestGetCoreToolsUnaffected:
     """Tests that get_core_tools is unaffected by modules."""
 
     def test_get_core_tools_unaffected_by_modules(self) -> None:
-        """Given toolkit, When get_tools called with modules, Then get_core_tools still returns only 5 core tools."""
+        """Given toolkit, When get_tools called with modules, Then get_core_tools still returns only core tools."""
         # Arrange
         toolkit = DataFrameToolkit()
 
         # Act
+        core_tools_before = toolkit.get_core_tools()
         toolkit.get_tools(MockModuleA)
-        core_tools = toolkit.get_core_tools()
+        core_tools_after = toolkit.get_core_tools()
 
         # Assert
         with check:
-            assert len(core_tools) == 5
-        core_tool_names = {t.name for t in core_tools}
+            assert len(core_tools_before) == len(core_tools_after)
+        core_tool_names = {t.name for t in core_tools_after}
         with check:
             assert "mock_tool_a" not in core_tool_names

@@ -5,6 +5,8 @@ from __future__ import annotations
 from langchain_core.tools import BaseTool
 from pytest_check import check
 
+from dfkit.tool_module import ToolModule
+
 
 class TestToolModuleProtocol:
     """Tests for ToolModule Protocol conformance checking."""
@@ -16,9 +18,8 @@ class TestToolModuleProtocol:
         system_prompt as a property should satisfy the ToolModule protocol
         when checked with isinstance().
         """
-        # Arrange
-        from dfkit.tool_module import ToolModule  # noqa: PLC0415 - deferred import to test isinstance() behavior
 
+        # Arrange
         class ConformingModule:
             """A minimal module that satisfies the ToolModule protocol."""
 
@@ -62,9 +63,8 @@ class TestToolModuleProtocol:
         A class that only has system_prompt but lacks get_tools() should not
         satisfy the ToolModule protocol.
         """
-        # Arrange
-        from dfkit.tool_module import ToolModule  # noqa: PLC0415 - deferred import to test isinstance() behavior
 
+        # Arrange
         class MissingGetTools:
             """A class missing the get_tools() method."""
 
@@ -91,9 +91,8 @@ class TestToolModuleProtocol:
         A class that only has get_tools() but lacks system_prompt should not
         satisfy the ToolModule protocol.
         """
-        # Arrange
-        from dfkit.tool_module import ToolModule  # noqa: PLC0415 - deferred import to test isinstance() behavior
 
+        # Arrange
         class MissingSystemPrompt:
             """A class missing the system_prompt property."""
 

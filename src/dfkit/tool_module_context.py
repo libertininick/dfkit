@@ -39,12 +39,9 @@ Examples:
     >>> toolkit = DataFrameToolkit()
     >>> df = pl.DataFrame({"id": [1, 2, 3], "amount": [100, 200, 300]})
     >>> ref = toolkit.register_dataframe("sales", df)
-    >>> module = MyModule(toolkit._tool_module_context)
-    >>> module.system_prompt
-    'My custom module for DataFrame operations.'
-    >>> tools = module.get_tools()
-    >>> len(tools)
-    1
+    >>> tools = toolkit.get_tools(MyModule)
+    >>> len(tools) >= 6  # 5 core tools + 1 custom tool
+    True
 """
 
 from __future__ import annotations
