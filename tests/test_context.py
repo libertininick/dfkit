@@ -45,8 +45,8 @@ def populated_context(sample_df: pl.DataFrame, sample_lazy_df: pl.LazyFrame) -> 
     """Create a pre-configured context with multiple registered dataframes.
 
     Args:
-        sample_df: Sample eager DataFrame fixture.
-        sample_lazy_df: Sample LazyFrame fixture.
+        sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+        sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
 
     Returns:
         DataFrameContext: Context with 'df_00000001' and 'df_00000002' registered.
@@ -80,6 +80,10 @@ class TestInitialization:
 
         When a mapping is provided to the constructor, all dataframes should be
         registered immediately and accessible by their keys.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
         """
         dataframes = {"df_00000001": sample_df, "df_00000002": sample_lazy_df}
         ctx = DataFrameContext(dataframes=dataframes)
@@ -102,6 +106,9 @@ class TestInitialization:
 
         Since register_many() calls register() for each frame, attempting to
         register duplicate frame_ids during initialization should fail.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         # This test verifies behavior indirectly by testing register_many
         ctx = DataFrameContext()
@@ -119,6 +126,9 @@ class TestRegistration:
 
         Registering a DataFrame should increase the context size, make the
         frame accessible by frame_id, and allow retrieval via get_frame().
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -133,6 +143,9 @@ class TestRegistration:
 
         Registering a LazyFrame should work identically to registering a
         DataFrame, supporting lazy evaluation patterns.
+
+        Args:
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_lazy_df)
@@ -147,6 +160,9 @@ class TestRegistration:
 
         Attempting to register a frame with an already-registered frame_id should
         fail to prevent accidental overwrites and maintain registry integrity.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -159,6 +175,9 @@ class TestRegistration:
 
         The register method should return the context instance to enable
         fluent interface patterns.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         result = ctx.register("df_00000001", sample_df)
@@ -173,6 +192,11 @@ class TestRegistration:
 
         register_many() should allow registering multiple dataframes at once,
         making them all accessible with correct frame_ids and data.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         dataframes = {"df_00000001": sample_df, "df_00000002": sample_lazy_df, "df_00000003": sample_df_2}
@@ -195,6 +219,9 @@ class TestRegistration:
         """Verify that register_many() returns self for method chaining.
 
         Like register(), register_many() should support fluent interface.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         result = ctx.register_many({"df_00000001": sample_df})
@@ -219,6 +246,9 @@ class TestRegistration:
 
         This is valid behavior allowing multiple views or aliases of the same
         data source in different SQL contexts.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -244,6 +274,9 @@ class TestUnregistration:
 
         Unregistering one frame should remove it from the context while
         leaving other dataframes accessible.
+
+        Args:
+            populated_context (DataFrameContext): Pre-configured context fixture.
         """
         ctx = populated_context
         initial_len = len(ctx)
@@ -263,6 +296,11 @@ class TestUnregistration:
 
         Unregistering multiple dataframes at once should remove all specified
         dataframes while preserving others.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -298,6 +336,10 @@ class TestUnregistration:
 
         After unregistering a frame, the same frame_id should be available for
         registering a new frame (even with different data).
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000004", sample_df)
@@ -315,6 +357,9 @@ class TestUnregistration:
         """Verify that unregister() returns self for method chaining.
 
         The unregister method should support fluent interface patterns.
+
+        Args:
+            populated_context (DataFrameContext): Pre-configured context fixture.
         """
         ctx = populated_context
         result = ctx.unregister("df_00000001")
@@ -331,6 +376,9 @@ class TestSQLQueryExecution:
 
         Executing a SQL query on an eager DataFrame should return an eager
         DataFrame with the expected results.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -349,6 +397,9 @@ class TestSQLQueryExecution:
 
         Executing a SQL query with eager=False should return a LazyFrame that
         can be collected to produce correct results.
+
+        Args:
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_lazy_df)
@@ -370,6 +421,10 @@ class TestSQLQueryExecution:
 
         SQL JOIN operations should work across different registered dataframes,
         demonstrating the registry's utility for multi-table queries.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -395,6 +450,9 @@ class TestSQLQueryExecution:
         """Verify error when query is an empty string.
 
         Empty queries are invalid and should be rejected before reaching Polars.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -407,6 +465,9 @@ class TestSQLQueryExecution:
 
         Whitespace-only queries should be treated the same as empty queries
         and rejected with a clear error message.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -429,6 +490,9 @@ class TestSQLQueryExecution:
 
         Invalid SQL syntax should propagate a Polars exception. We let Polars
         handle SQL validation rather than duplicating it.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -442,6 +506,9 @@ class TestSQLQueryExecution:
 
         Referencing a table that doesn't exist in the registry should result
         in a Polars error about the missing table.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -459,6 +526,9 @@ class TestGetFrame:
 
         get_frame() should return the exact same DataFrame object that was
         registered, preserving object identity.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -477,6 +547,9 @@ class TestGetFrame:
 
         get_frame() should return the exact same LazyFrame object that was
         registered.
+
+        Args:
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_lazy_df)
@@ -518,6 +591,10 @@ class TestContainerProtocol:
         """Verify len() with registered dataframes returns correct count.
 
         The length should equal the number of registered dataframes.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -531,6 +608,10 @@ class TestContainerProtocol:
         """Verify len() updates correctly after registration and unregistration.
 
         The length should dynamically reflect the current state of the registry.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -548,6 +629,9 @@ class TestContainerProtocol:
         """Verify 'in' operator returns True for registered dataframes.
 
         The membership test should return True for registered frame_ids.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -580,6 +664,10 @@ class TestContainerProtocol:
         """Verify string representation with registered dataframes.
 
         The repr should list all registered frame_ids in a clear format.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -615,6 +703,11 @@ class TestProperties:
 
         The property should return a list containing all registered frame_ids
         in registration order.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -655,6 +748,11 @@ class TestClear:
 
         After calling clear(), the context should be empty with no registered
         dataframes accessible.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -676,6 +774,9 @@ class TestClear:
         """Verify clear() returns self for method chaining.
 
         The clear method should support fluent interface patterns.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df)
@@ -694,6 +795,10 @@ class TestMethodChaining:
 
         Chaining multiple register() calls should successfully register all
         dataframes in sequence.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_df).register("df_00000002", sample_df_2)
@@ -712,6 +817,11 @@ class TestMethodChaining:
 
         Complex chains combining register, unregister, and clear should work
         correctly with expected final state.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
 
@@ -738,6 +848,11 @@ class TestMethodChaining:
         """Verify chaining with register_many() and unregister().
 
         register_many() should chain smoothly with other methods.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
         dataframes = {"df_00000001": sample_df, "df_00000002": sample_lazy_df, "df_00000003": sample_df_2}
@@ -760,6 +875,10 @@ class TestSQLContextSynchronization:
 
         After registering, unregistering, and re-registering dataframes, SQL
         queries should work correctly without stale references.
+
+        Args:
+            sample_df (pl.DataFrame): Sample eager DataFrame fixture.
+            sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
         """
         ctx = DataFrameContext()
 

@@ -32,10 +32,6 @@ class TestSQLValidationErrorBase:
         query = "SELECT * FROM users"
         error = SQLValidationError("Validation failed", query=query)
 
-        # Verify it's catchable as Exception
-        with pytest.raises(Exception):  # noqa B017 # Intentional for test
-            raise error
-
         # Verify instance checks
         with check:
             assert isinstance(error, Exception), "Should be an instance of Exception"
@@ -83,10 +79,6 @@ class TestSQLSyntaxError:
         query = "SELEC * FORM users"  # Intentional typos
         errors: list[ParseErrorDict] = [{"description": "Unexpected token 'SELEC'", "line": 1, "col": 1}]
         error = SQLSyntaxError("Invalid SQL syntax", query=query, errors=errors)
-
-        # Verify it's catchable as SQLValidationError
-        with pytest.raises(SQLValidationError):
-            raise error
 
         # Verify instance checks
         with check:
@@ -180,10 +172,6 @@ class TestSQLTableError:
         invalid_tables = ["nonexistent_table"]
         error = SQLTableError("Invalid table reference", query=query, invalid_tables=invalid_tables)
 
-        # Verify it's catchable as SQLValidationError
-        with pytest.raises(SQLValidationError):
-            raise error
-
         # Verify instance checks
         with check:
             assert isinstance(error, SQLValidationError), "Should be an instance of SQLValidationError"
@@ -247,10 +235,6 @@ class TestSQLColumnError:
         query = "SELECT nonexistent_col FROM users"
         invalid_columns = {"users": ["nonexistent_col"]}
         error = SQLColumnError("Invalid column reference", query=query, invalid_columns=invalid_columns)
-
-        # Verify it's catchable as SQLValidationError
-        with pytest.raises(SQLValidationError):
-            raise error
 
         # Verify instance checks
         with check:
@@ -331,10 +315,6 @@ class TestSQLBlacklistedCommandError:
             command_type=command_type,
             blacklist=blacklist,
         )
-
-        # Verify it's catchable as SQLValidationError
-        with pytest.raises(SQLValidationError):
-            raise error
 
         # Verify instance checks
         with check:
@@ -586,8 +566,9 @@ class TestAllExceptionsStoreQuery:
         caused the error, enabling uniform access to this debugging information.
 
         Args:
-            exception_class: The exception class to test.
-            extra_kwargs: Additional keyword arguments specific to each exception type.
+            exception_class (type[SQLValidationError]): The exception class to test.
+            extra_kwargs (dict[str, object]): Additional keyword arguments specific to
+                each exception type.
         """
         query = "SELECT * FROM test_table WHERE id = 1"
         message = "Test error message"
@@ -644,32 +625,20 @@ class TestExceptionsCatchableByBaseClass:
         SQLSyntaxError, SQLTableError, and SQLColumnError are siblings in the
         hierarchy (all inherit from SQLValidationError), so one should not
         catch another.
-        """  # noqa DOC501 # We are testing exception handling here.
-        # SQLTableError should not be caught by SQLSyntaxError handler
-        with pytest.raises(SQLTableError):
-            try:
-                raise SQLTableError("Table error", query="SELECT * FROM tbl", invalid_tables=["tbl"])
-            except SQLSyntaxError:
-                # This should not catch SQLTableError
-                pass
+        """
+        # Verify each exception is NOT an instance of its sibling types
+        table_error = SQLTableError("Table error", query="SELECT * FROM tbl", invalid_tables=["tbl"])
+        column_error = SQLColumnError("Column error", query="SELECT col FROM tbl", invalid_columns={"tbl": ["col"]})
+        syntax_error = SQLSyntaxError(
+            "Syntax error", query="bad sql", errors=[{"description": "parse failed", "line": 1}]
+        )
 
-        # SQLColumnError should not be caught by SQLTableError handler
-        with pytest.raises(SQLColumnError):
-            try:
-                raise SQLColumnError("Column error", query="SELECT col FROM tbl", invalid_columns={"tbl": ["col"]})
-            except SQLTableError:
-                # This should not catch SQLColumnError
-                pass
-
-        # SQLSyntaxError should not be caught by SQLColumnError handler
-        with pytest.raises(SQLSyntaxError):
-            try:
-                raise SQLSyntaxError(
-                    "Syntax error", query="bad sql", errors=[{"description": "parse failed", "line": 1}]
-                )
-            except SQLColumnError:
-                # This should not catch SQLSyntaxError
-                pass
+        with check:
+            assert not isinstance(table_error, SQLSyntaxError), "SQLTableError should not be caught by SQLSyntaxError"
+        with check:
+            assert not isinstance(column_error, SQLTableError), "SQLColumnError should not be caught by SQLTableError"
+        with check:
+            assert not isinstance(syntax_error, SQLColumnError), "SQLSyntaxError should not be caught by SQLColumnError"
 
     @staticmethod
     def _simulate_exceptions(error_type: str) -> None:
@@ -683,17 +652,21 @@ class TestExceptionsCatchableByBaseClass:
                 "column", or "blacklist".
 
         Raises:
+            SQLSyntaxError: When error_type is "syntax".
+            SQLTableError: When error_type is "table".
+            SQLColumnError: When error_type is "column".
+            SQLBlacklistedCommandError: When error_type is "blacklist".
             ValueError: If an unknown error_type is provided.
         """
         query = "SELECT * FROM users"
-        error_map: dict[str, SQLValidationError] = {
-            "syntax": SQLSyntaxError("Syntax error", query=query, errors=[{"description": "Invalid token", "line": 1}]),
-            "table": SQLTableError("Table not found", query=query, invalid_tables=["users"]),
-            "column": SQLColumnError("Column not found", query=query, invalid_columns={"users": ["id"]}),
-            "blacklist": SQLBlacklistedCommandError(
+        if error_type == "syntax":
+            raise SQLSyntaxError("Syntax error", query=query, errors=[{"description": "Invalid token", "line": 1}])
+        if error_type == "table":
+            raise SQLTableError("Table not found", query=query, invalid_tables=["users"])
+        if error_type == "column":
+            raise SQLColumnError("Column not found", query=query, invalid_columns={"users": ["id"]})
+        if error_type == "blacklist":
+            raise SQLBlacklistedCommandError(
                 "Blacklisted command", query=query, command_type="DELETE", blacklist={"DELETE", "DROP"}
-            ),
-        }
-        if error_type not in error_map:
-            raise ValueError(f"Unknown error_type: {error_type}")
-        raise error_map[error_type]
+            )
+        raise ValueError(f"Unknown error_type: {error_type}")

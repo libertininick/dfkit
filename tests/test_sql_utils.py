@@ -71,7 +71,7 @@ class TestParseSQLValidQueries:
         successfully and return a sqlglot.Expression.
 
         Args:
-            query: A syntactically valid SELECT statement.
+            query (str): A syntactically valid SELECT statement.
         """
         result = parse_sql(query)
 
@@ -98,7 +98,7 @@ class TestParseSQLValidQueries:
         successfully and return a sqlglot.Expression.
 
         Args:
-            query: A syntactically valid INSERT statement.
+            query (str): A syntactically valid INSERT statement.
         """
         result = parse_sql(query)
 
@@ -125,7 +125,7 @@ class TestParseSQLValidQueries:
         successfully and return a sqlglot.Expression.
 
         Args:
-            query: A syntactically valid UPDATE statement.
+            query (str): A syntactically valid UPDATE statement.
         """
         result = parse_sql(query)
 
@@ -152,7 +152,7 @@ class TestParseSQLValidQueries:
         successfully and return a sqlglot.Expression.
 
         Args:
-            query: A syntactically valid DELETE statement.
+            query (str): A syntactically valid DELETE statement.
         """
         result = parse_sql(query)
 
@@ -201,7 +201,7 @@ class TestParseSQLComplexQueries:
         CROSS, and multi-table JOINs) are parsed successfully.
 
         Args:
-            query: A syntactically valid JOIN query.
+            query (str): A syntactically valid JOIN query.
         """
         result = parse_sql(query)
 
@@ -232,7 +232,7 @@ class TestParseSQLComplexQueries:
         scalar, EXISTS) are parsed successfully.
 
         Args:
-            query: A syntactically valid query containing subqueries.
+            query (str): A syntactically valid query containing subqueries.
         """
         result = parse_sql(query)
 
@@ -270,7 +270,7 @@ class TestParseSQLComplexQueries:
         parsed successfully.
 
         Args:
-            query: A syntactically valid query containing CTEs.
+            query (str): A syntactically valid query containing CTEs.
         """
         result = parse_sql(query)
 
@@ -299,7 +299,7 @@ class TestParseSQLComplexQueries:
         are parsed successfully.
 
         Args:
-            query: A syntactically valid query with set operations.
+            query (str): A syntactically valid query with set operations.
         """
         result = parse_sql(query)
 
@@ -331,7 +331,7 @@ class TestParseSQLComplexQueries:
         Verifies that various window function patterns are parsed successfully.
 
         Args:
-            query: A syntactically valid query with window functions.
+            query (str): A syntactically valid query with window functions.
         """
         result = parse_sql(query)
 
@@ -401,7 +401,7 @@ class TestParseSQLEmptyQueries:
         are not valid SQL and should raise SQLSyntaxError with an empty errors list.
 
         Args:
-            query: A string containing only whitespace characters.
+            query (str): A string containing only whitespace characters.
         """
         with pytest.raises(SQLSyntaxError) as exc_info:
             parse_sql(query)
@@ -454,7 +454,7 @@ class TestParseSQLInvalidQueries:
         should raise SQLSyntaxError with error details.
 
         Args:
-            query: A syntactically invalid SQL query.
+            query (str): A syntactically invalid SQL query.
         """
         with pytest.raises(SQLSyntaxError):
             parse_sql(query)
@@ -499,10 +499,13 @@ class TestParseSQLErrorDetails:
 
     These tests verify that SQLSyntaxError contains the expected attributes
     including the original query and parse error details.
+
+    Attributes:
+        INVALID_QUERY (str): A query with unclosed parenthesis used across tests.
     """
 
     # Use a query that definitively causes a ParseError in SQLglot
-    INVALID_QUERY = "SELECT * FROM (SELECT a FROM t"
+    INVALID_QUERY: str = "SELECT * FROM (SELECT a FROM t"
 
     def test_parse_sql_error_contains_query(self) -> None:
         """SQLSyntaxError should contain the original query.
@@ -651,7 +654,7 @@ class TestParseSQLEdgeCases:
         Whitespace around a valid SQL query should be ignored during parsing.
 
         Args:
-            query: A valid SQL query with surrounding whitespace.
+            query (str): A valid SQL query with surrounding whitespace.
         """
         result = parse_sql(query)
 
@@ -680,7 +683,7 @@ class TestParseSQLEdgeCases:
         by the parser.
 
         Args:
-            query: A valid SQL query containing comments.
+            query (str): A valid SQL query containing comments.
         """
         result = parse_sql(query)
 
@@ -836,7 +839,7 @@ class TestGetSQLCommandType:
         both map to the 'DROP' command type string.
 
         Args:
-            query: A DROP statement (TABLE or INDEX).
+            query (str): A DROP statement (TABLE or INDEX).
         """
         expression = sqlglot.parse_one(query)
         result = _get_sql_command_type(expression)
@@ -1393,7 +1396,12 @@ class TestValidateSQLColumnsValidCases:
     def test_validate_sql_columns_aggregate_functions_succeeds(
         self, query: str, table_columns: dict[str, set[str]]
     ) -> None:
-        """Aggregate functions referencing valid columns should not raise."""
+        """Aggregate functions referencing valid columns should not raise.
+
+        Args:
+            query (str): A SQL query with aggregate functions.
+            table_columns (dict[str, set[str]]): Schema mapping tables to columns.
+        """
         _validate_sql_columns(parse_sql(query), table_columns, query)
 
     def test_validate_sql_columns_cte_columns_skipped_base_table_skipped(self) -> None:
