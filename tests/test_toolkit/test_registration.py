@@ -338,7 +338,7 @@ class TestGetDataFrameId:
 class TestGetDataFrameReference:
     """Tests for DataFrameToolkit.get_dataframe_reference method."""
 
-    def test_get_reference_by_name_returns_dataframe_reference(self) -> None:
+    def test_get_dataframe_reference_by_name(self) -> None:
         """Given registered name, When called, Then returns DataFrameReference."""
         # Arrange
         toolkit = DataFrameToolkit()
@@ -362,7 +362,7 @@ class TestGetDataFrameReference:
         with check:
             assert result.description == "Test data"
 
-    def test_get_reference_by_id_returns_dataframe_reference(self) -> None:
+    def test_get_dataframe_reference_by_id(self) -> None:
         """Given registered ID, When called, Then returns DataFrameReference."""
         # Arrange
         toolkit = DataFrameToolkit()
@@ -383,7 +383,7 @@ class TestGetDataFrameReference:
         with check:
             assert result.name == "lookup_by_id"
 
-    def test_get_reference_not_found_returns_tool_call_error(self) -> None:
+    def test_get_dataframe_reference_not_found(self) -> None:
         """Given unknown identifier, When called, Then returns ToolCallError."""
         # Arrange
         toolkit = DataFrameToolkit()
@@ -401,7 +401,7 @@ class TestGetDataFrameReference:
         with check:
             assert "not found by name or ID" in result.message
 
-    def test_get_reference_error_has_both_names_and_ids(self) -> None:
+    def test_get_dataframe_reference_not_found_includes_available_names_and_ids(self) -> None:
         """Given unknown identifier with registered DataFrames, When called, Then error has available names AND IDs."""
         # Arrange
         toolkit = DataFrameToolkit()
