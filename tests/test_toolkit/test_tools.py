@@ -7,10 +7,178 @@ from __future__ import annotations
 
 import polars as pl
 import pytest
+from langchain_core.tools import BaseTool, tool
 from pytest_check import check
 
 from dfkit.models import DataFrameReference, ToolCallError
+from dfkit.tool_module_context import ToolModuleContext
 from dfkit.toolkit import DataFrameToolkit
+
+# ============================================================================
+# Mock modules for testing tool module composition
+# ============================================================================
+
+
+class MockModuleA:
+    """A mock tool module for testing that provides one tool.
+
+    Satisfies the ToolModule protocol with a single tool (mock_tool_a)
+    that returns the row count of a DataFrame.
+    """
+
+    def __init__(self, context: ToolModuleContext) -> None:
+        """Initialize MockModuleA.
+
+        Args:
+            context (ToolModuleContext): The tool module context.
+        """
+        self._context = context
+
+        @tool
+        def mock_tool_a(name: str) -> str:
+            """Get row count for a DataFrame.
+
+            Args:
+                name (str): DataFrame name or ID.
+
+            Returns:
+                str: Row count message.
+            """
+            df = self._context.get_dataframe(name)
+            if isinstance(df, ToolCallError):
+                return str(df)
+            return f"DataFrame has {len(df)} rows"
+
+        self._tools = [mock_tool_a]
+
+    @property
+    def system_prompt(self) -> str:
+        """Return the system prompt for this module.
+
+        Returns:
+            str: System prompt text.
+        """
+        return "Use mock_tool_a to count rows in a DataFrame."
+
+    def get_tools(self) -> list[BaseTool]:
+        """Return tools provided by this module.
+
+        Returns:
+            list[BaseTool]: List of tools.
+        """
+        return list(self._tools)
+
+
+class MockModuleB:
+    """A mock tool module for testing that provides two tools.
+
+    Satisfies the ToolModule protocol with two tools (mock_tool_b1, mock_tool_b2)
+    for column counting and name listing.
+    """
+
+    def __init__(self, context: ToolModuleContext) -> None:
+        """Initialize MockModuleB.
+
+        Args:
+            context (ToolModuleContext): The tool module context.
+        """
+        self._context = context
+
+        @tool
+        def mock_tool_b1(name: str) -> str:
+            """Get column count for a DataFrame.
+
+            Args:
+                name (str): DataFrame name or ID.
+
+            Returns:
+                str: Column count message.
+            """
+            ref = self._context.get_dataframe_reference(name)
+            if isinstance(ref, ToolCallError):
+                return str(ref)
+            return f"DataFrame has {ref.num_columns} columns"
+
+        @tool
+        def mock_tool_b2() -> str:
+            """List all DataFrame names.
+
+            Returns:
+                str: Comma-separated DataFrame names.
+            """
+            refs = self._context.references
+            return ", ".join(r.name for r in refs)
+
+        self._tools = [mock_tool_b1, mock_tool_b2]
+
+    @property
+    def system_prompt(self) -> str:
+        """Return the system prompt for this module.
+
+        Returns:
+            str: System prompt text.
+        """
+        return "Use mock_tool_b1 to count columns and mock_tool_b2 to list names."
+
+    def get_tools(self) -> list[BaseTool]:
+        """Return tools provided by this module.
+
+        Returns:
+            list[BaseTool]: List of tools.
+        """
+        return list(self._tools)
+
+
+class MockModuleWithRegistration:
+    """Mock module that registers a DataFrame via context.register().
+
+    Test helper for verifying module-registry interaction.
+    """
+
+    def __init__(self, context: ToolModuleContext) -> None:
+        """Initialize the module.
+
+        Args:
+            context (ToolModuleContext): The tool module context.
+        """
+        self._context = context
+
+        @tool
+        def register_test_df() -> str:
+            """Register a test DataFrame.
+
+            Returns:
+                str: Registration result message.
+            """
+            new_df = pl.DataFrame({"x": [10, 20, 30]})
+            ref = self._context.register_dataframe("new_df", new_df)
+            if isinstance(ref, ToolCallError):
+                return str(ref)
+            return f"Registered DataFrame with ID {ref.id}"
+
+        self._tools = [register_test_df]
+
+    @property
+    def system_prompt(self) -> str:
+        """Return the system prompt.
+
+        Returns:
+            str: System prompt text.
+        """
+        return "Test module for registration."
+
+    def get_tools(self) -> list[BaseTool]:
+        """Return tools provided by this module.
+
+        Returns:
+            list[BaseTool]: List of tools.
+        """
+        return list(self._tools)
+
+
+# ============================================================================
+# Tests
+# ============================================================================
 
 
 class TestGetTools:
@@ -198,7 +366,7 @@ class TestListDataFrames:
 
         # Create derivative via public API
         derived_ref = toolkit.execute_sql(
-            query=f"SELECT x FROM {base_ref.id} WHERE x < 3",  # noqa: S608
+            query=f"SELECT x FROM {base_ref.id} WHERE x < 3",  # noqa: S608 - ref.id is a validated DataFrameId, not user input
             result_name="derived",
         )
         assert isinstance(derived_ref, DataFrameReference)
@@ -256,7 +424,7 @@ class TestExecuteSQL:
         # Arrange
         df = pl.DataFrame({"id": [1, 2, 3, 4, 5], "amount": [100, 200, 150, 300, 250]})
         ref = toolkit.register_dataframe("sales", df)
-        query = f"SELECT * FROM {ref.id} WHERE amount > 150"  # noqa: S608
+        query = f"SELECT * FROM {ref.id} WHERE amount > 150"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
 
         # Act
         result = toolkit.execute_sql(
@@ -286,7 +454,7 @@ class TestExecuteSQL:
         # Arrange
         df = pl.DataFrame({"value": [10, 20, 30]})
         ref = toolkit.register_dataframe("data", df)
-        query = f"SELECT value * 2 AS doubled FROM {ref.id}"  # noqa: S608
+        query = f"SELECT value * 2 AS doubled FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
 
         # Act
         result = toolkit.execute_sql(query=query, result_name="doubled_data")
@@ -319,7 +487,7 @@ class TestExecuteSQL:
             SELECT t1.id, t1.value, t2.category
             FROM {ref1.id} AS t1
             JOIN {ref2.id} AS t2 ON t1.id = t2.id
-        """  # noqa: S608
+        """  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=query, result_name="joined_result")
 
         # Assert
@@ -339,7 +507,7 @@ class TestExecuteSQL:
         # Arrange
         df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
         ref = toolkit.register_dataframe("source", df)
-        query = f"SELECT x, y FROM {ref.id} WHERE x > 1"  # noqa: S608
+        query = f"SELECT x, y FROM {ref.id} WHERE x > 1"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
 
         # Act
         result = toolkit.execute_sql(query=query, result_name="filtered")
@@ -363,7 +531,7 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("data", df)
         toolkit.register_dataframe("existing_result", pl.DataFrame({"b": [4, 5, 6]}))
 
-        query = f"SELECT * FROM {ref.id}"  # noqa: S608
+        query = f"SELECT * FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
 
         # Act - try to create result with existing name
         result = toolkit.execute_sql(query=query, result_name="existing_result")
@@ -389,7 +557,7 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("data", df)
 
         # Act - intentionally malformed SQL (missing closing parenthesis)
-        bad_query = f"SELECT * FROM (SELECT id FROM {ref.id}"  # noqa: S608
+        bad_query = f"SELECT * FROM (SELECT id FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=bad_query, result_name="broken")
 
         # Assert
@@ -445,7 +613,7 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("users", df)
 
         # Act - query references non-existent column
-        bad_query = f"SELECT id, nonexistent_column FROM {ref.id}"  # noqa: S608
+        bad_query = f"SELECT id, nonexistent_column FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=bad_query, result_name="result")
 
         # Assert
@@ -474,13 +642,13 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("data", df)
 
         # Act - try each destructive command
-        delete_query = f"DELETE FROM {ref.id} WHERE id = 1"  # noqa: S608
+        delete_query = f"DELETE FROM {ref.id} WHERE id = 1"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result_delete = toolkit.execute_sql(query=delete_query, result_name="result1")
 
         drop_query = f"DROP TABLE {ref.id}"
         result_drop = toolkit.execute_sql(query=drop_query, result_name="result2")
 
-        insert_query = f"INSERT INTO {ref.id} (id, value) VALUES (4, 40)"  # noqa: S608
+        insert_query = f"INSERT INTO {ref.id} (id, value) VALUES (4, 40)"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result_insert = toolkit.execute_sql(query=insert_query, result_name="result3")
 
         # Assert DELETE
@@ -526,7 +694,7 @@ class TestExecuteSQL:
             FROM {ref_users.id} AS u
             JOIN {ref_orders.id} AS o ON u.user_id = o.user_id
             ORDER BY o.order_id
-        """  # noqa: S608
+        """  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=query, result_name="user_orders")
 
         # Assert
@@ -552,14 +720,14 @@ class TestExecuteSQL:
         base_ref = toolkit.register_dataframe("base", base_df)
 
         # Act - first query: aggregate by category
-        query1 = f"SELECT category, SUM(value) AS total FROM {base_ref.id} GROUP BY category"  # noqa: S608
+        query1 = f"SELECT category, SUM(value) AS total FROM {base_ref.id} GROUP BY category"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result1 = toolkit.execute_sql(query=query1, result_name="category_totals")
 
         with check:
             assert isinstance(result1, DataFrameReference)
 
         # Act - second query: filter the aggregated result
-        query2 = f"SELECT * FROM {result1.id} WHERE total > 50"  # noqa: S608
+        query2 = f"SELECT * FROM {result1.id} WHERE total > 50"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result2 = toolkit.execute_sql(query=query2, result_name="high_totals")
 
         # Assert
@@ -592,7 +760,7 @@ class TestExecuteSQL:
             FROM {ref.id}
             GROUP BY region
             ORDER BY region
-        """  # noqa: S608
+        """  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=query, result_name="regional_summary")
 
         # Assert
@@ -622,7 +790,7 @@ class TestExecuteSQL:
             FROM {ref.id}
             WHERE score >= 90
             ORDER BY score DESC
-        """  # noqa: S608
+        """  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=query, result_name="high_scorers")
 
         # Assert
@@ -644,7 +812,7 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("data", df)
 
         # Act - query that matches nothing
-        query = f"SELECT * FROM {ref.id} WHERE status = 'inactive'"  # noqa: S608
+        query = f"SELECT * FROM {ref.id} WHERE status = 'inactive'"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=query, result_name="no_matches")
 
         # Assert
@@ -673,7 +841,7 @@ class TestExecuteSQL:
             UNION ALL
             SELECT id, type FROM {ref2.id}
             ORDER BY id
-        """  # noqa: S608
+        """  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=query, result_name="combined")
 
         # Assert
@@ -698,7 +866,7 @@ class TestExecuteSQL:
         tools = toolkit.get_core_tools()
         tool_execute_sql = next(t for t in tools if t.name == "execute_sql")
         result = tool_execute_sql.invoke({
-            "query": f"SELECT * FROM {ref.id} WHERE amount > 150",  # noqa: S608
+            "query": f"SELECT * FROM {ref.id} WHERE amount > 150",  # noqa: S608 - ref.id is a validated DataFrameId, not user input
             "result_name": "high_sales",
             "result_description": "Sales over $150",
         })
@@ -1299,3 +1467,370 @@ class TestViewAsMarkdownTable:
         # Assert
         with check:
             assert "view_as_markdown_table" in tool_names
+
+
+# ============================================================================
+# Phase 2: Tool module composition tests
+# ============================================================================
+
+
+class TestGetToolsWithModules:
+    """Tests for per-call module composition in get_tools()."""
+
+    def test_get_tools_no_args_returns_core_only(self) -> None:
+        """Given toolkit, When get_tools called with no args, Then returns exactly 5 core tools."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools()
+
+        # Assert
+        with check:
+            assert len(tools) == 5
+
+    def test_get_tools_with_module_returns_core_plus_module(self) -> None:
+        """Given toolkit, When get_tools called with MockModuleA, Then returns 5 core + 1 module tool."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools(MockModuleA)
+
+        # Assert
+        with check:
+            assert len(tools) == 6
+        tool_names = {t.name for t in tools}
+        with check:
+            assert "mock_tool_a" in tool_names
+
+    def test_get_tools_with_multiple_modules(self) -> None:
+        """Given toolkit, When get_tools with MockModuleA and MockModuleB, Then returns 5 core + 3 module tools."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools(MockModuleA, MockModuleB)
+
+        # Assert
+        with check:
+            assert len(tools) == 8
+        tool_names = {t.name for t in tools}
+        with check:
+            assert "mock_tool_a" in tool_names
+        with check:
+            assert "mock_tool_b1" in tool_names
+        with check:
+            assert "mock_tool_b2" in tool_names
+
+    def test_get_tools_exclude_core_tool(self) -> None:
+        """Given toolkit, When get_tools with exclude execute_sql, Then returns 4 core tools."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools(exclude={"execute_sql"})
+
+        # Assert
+        with check:
+            assert len(tools) == 4
+        tool_names = {t.name for t in tools}
+        with check:
+            assert "execute_sql" not in tool_names
+
+    def test_get_tools_exclude_module_tool(self) -> None:
+        """Given toolkit, When get_tools with MockModuleA but exclude mock_tool_a, Then returns 5 core tools only."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools(MockModuleA, exclude={"mock_tool_a"})
+
+        # Assert
+        with check:
+            assert len(tools) == 5
+        tool_names = {t.name for t in tools}
+        with check:
+            assert "mock_tool_a" not in tool_names
+
+    def test_get_tools_exclude_nonexistent_is_no_op(self) -> None:
+        """Given toolkit, When get_tools with exclude nonexistent, Then returns all 5 core tools."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools(exclude={"nonexistent"})
+
+        # Assert
+        with check:
+            assert len(tools) == 5
+
+    def test_get_tools_exclude_empty_set_is_no_op(self) -> None:
+        """Given toolkit, When get_tools with exclude empty set, Then returns all 5 core tools."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools(exclude=set())
+
+        # Assert
+        with check:
+            assert len(tools) == 5
+
+    def test_get_tools_duplicate_module_class_deduplicates(self) -> None:
+        """Given toolkit, When get_tools with MockModuleA twice, Then returns 5 core + 1 module tool."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools(MockModuleA, MockModuleA)
+
+        # Assert
+        with check:
+            assert len(tools) == 6
+        tool_names = {t.name for t in tools}
+        with check:
+            assert "mock_tool_a" in tool_names
+
+    def test_get_tools_returns_new_list_each_call(self) -> None:
+        """Given toolkit, When get_tools called twice, Then returns different list objects."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools1 = toolkit.get_tools()
+        tools2 = toolkit.get_tools()
+
+        # Assert
+        with check:
+            assert tools1 is not tools2, "get_tools should return a new list each call"
+        with check:
+            assert tools1 == tools2, "lists should have same content"
+
+
+class TestModuleCaching:
+    """Tests for lazy module instance caching."""
+
+    def test_module_instance_cached_across_calls(self) -> None:
+        """Given toolkit, When get_tools(MockModuleA) called twice, Then module instance is cached."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        toolkit.get_tools(MockModuleA)
+        toolkit.get_tools(MockModuleA)
+
+        # Assert
+        with check:
+            assert MockModuleA in toolkit._module_cache
+        with check:
+            assert isinstance(toolkit._module_cache[MockModuleA], MockModuleA)
+
+    def test_different_modules_cached_independently(self) -> None:
+        """Given toolkit, When get_tools called with different modules, Then both cached separately."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        toolkit.get_tools(MockModuleA)
+        toolkit.get_tools(MockModuleB)
+
+        # Assert
+        with check:
+            assert MockModuleA in toolkit._module_cache
+        with check:
+            assert MockModuleB in toolkit._module_cache
+        with check:
+            assert toolkit._module_cache[MockModuleA] is not toolkit._module_cache[MockModuleB]
+
+
+class TestModuleInstantiationErrors:
+    """Tests for error handling when module instantiation fails."""
+
+    def test_non_conforming_module_raises_type_error(self) -> None:
+        """Given module class with wrong constructor, When get_tools called, Then raises TypeError."""
+
+        # Arrange
+        class BadModule:
+            """Module that does not accept ToolModuleContext."""
+
+            def __init__(self) -> None:
+                """Initialize without context."""
+
+            @property
+            def system_prompt(self) -> str:
+                """Return prompt."""
+                return "bad module"
+
+            def get_tools(self) -> list:
+                """Return empty tools.
+
+                Returns:
+                    list: Empty list of tools.
+                """
+                return []
+
+        toolkit = DataFrameToolkit()
+
+        # Act & Assert
+        with pytest.raises(TypeError, match="Failed to instantiate BadModule"):
+            toolkit.get_tools(BadModule)
+
+
+class TestGetSystemPrompt:
+    """Tests for get_system_prompt()."""
+
+    def test_get_system_prompt_no_args_returns_core_prompt(self) -> None:
+        """Given toolkit, When get_system_prompt called with no args, Then returns non-empty core prompt."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        prompt = toolkit.get_system_prompt()
+
+        # Assert
+        with check:
+            assert isinstance(prompt, str)
+        with check:
+            assert len(prompt) > 0
+
+    def test_get_system_prompt_with_module(self) -> None:
+        """Given toolkit, When get_system_prompt with MockModuleA, Then contains core and module prompts."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        prompt = toolkit.get_system_prompt(MockModuleA)
+
+        # Assert
+        with check:
+            assert isinstance(prompt, str)
+        with check:
+            assert "Use mock_tool_a to count rows in a DataFrame." in prompt
+
+    def test_get_system_prompt_with_multiple_modules(self) -> None:
+        """Given toolkit, When get_system_prompt with multiple modules, Then contains prompts from all modules."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        prompt = toolkit.get_system_prompt(MockModuleA, MockModuleB)
+
+        # Assert
+        with check:
+            assert isinstance(prompt, str)
+        with check:
+            assert "Use mock_tool_a to count rows in a DataFrame." in prompt
+        with check:
+            assert "Use mock_tool_b1 to count columns and mock_tool_b2 to list names." in prompt
+
+    def test_get_system_prompt_exclude_all_module_tools_omits_module(self) -> None:
+        """Given toolkit, When all MockModuleA tools excluded, Then MockModuleA prompt omitted."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        prompt = toolkit.get_system_prompt(MockModuleA, exclude={"mock_tool_a"})
+
+        # Assert
+        with check:
+            assert isinstance(prompt, str)
+        with check:
+            assert "Use mock_tool_a to count rows in a DataFrame." not in prompt
+
+    def test_get_system_prompt_exclude_some_module_tools_adds_note(self) -> None:
+        """Given toolkit, When some MockModuleB tools excluded, Then prompt includes unavailable note."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        prompt = toolkit.get_system_prompt(MockModuleB, exclude={"mock_tool_b1"})
+
+        # Assert
+        with check:
+            assert isinstance(prompt, str)
+        with check:
+            assert "Use mock_tool_b1 to count columns and mock_tool_b2 to list names." in prompt
+        with check:
+            assert "mock_tool_b1" in prompt
+        with check:
+            assert "not available" in prompt.lower() or "unavailable" in prompt.lower() or "excluded" in prompt.lower()
+
+    def test_get_system_prompt_exclude_core_tool_adds_note(self) -> None:
+        """Given toolkit, When core tool excluded, Then prompt includes unavailable note."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        prompt = toolkit.get_system_prompt(exclude={"execute_sql"})
+
+        # Assert
+        with check:
+            assert isinstance(prompt, str)
+        with check:
+            assert "execute_sql" in prompt
+        with check:
+            assert "not available" in prompt.lower() or "unavailable" in prompt.lower() or "excluded" in prompt.lower()
+
+
+class TestModuleRegistryInteraction:
+    """Tests for module-toolkit data flow."""
+
+    def test_module_tool_can_read_dataframe(self) -> None:
+        """Given toolkit with registered DataFrame, When MockModuleA tool invoked, Then returns row count."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+        toolkit.register_dataframe("sales", pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+
+        # Act
+        tools = toolkit.get_tools(MockModuleA)
+        mock_tool_a = next(t for t in tools if t.name == "mock_tool_a")
+        result = mock_tool_a.invoke({"name": "sales"})
+
+        # Assert
+        with check:
+            assert isinstance(result, str)
+        with check:
+            assert result == "DataFrame has 3 rows"
+
+    def test_module_tool_can_register_dataframe(self) -> None:
+        """Given toolkit, When module tool registers DataFrame via context, Then visible in list_dataframes."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        tools = toolkit.get_tools(MockModuleWithRegistration)
+        register_tool = next(t for t in tools if t.name == "register_test_df")
+        result = register_tool.invoke({})
+
+        # Assert
+        with check:
+            assert isinstance(result, str)
+        with check:
+            assert "Registered DataFrame with ID" in result
+
+        # Verify the new DataFrame is visible
+        all_dfs = toolkit.list_dataframes()
+        names = {ref.name for ref in all_dfs}
+        with check:
+            assert "new_df" in names
+
+
+class TestGetCoreToolsUnaffected:
+    """Tests that get_core_tools is unaffected by modules."""
+
+    def test_get_core_tools_unaffected_by_modules(self) -> None:
+        """Given toolkit, When get_tools called with modules, Then get_core_tools still returns only 5 core tools."""
+        # Arrange
+        toolkit = DataFrameToolkit()
+
+        # Act
+        toolkit.get_tools(MockModuleA)
+        core_tools = toolkit.get_core_tools()
+
+        # Assert
+        with check:
+            assert len(core_tools) == 5
+        core_tool_names = {t.name for t in core_tools}
+        with check:
+            assert "mock_tool_a" not in core_tool_names

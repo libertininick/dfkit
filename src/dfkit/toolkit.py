@@ -8,21 +8,10 @@ The toolkit uses composition to manage an internal DataFrameContext for SQL
 query execution while exposing a user-friendly API based on DataFrame names
 rather than internal identifiers.
 
-Design Note - ID as Primary Key:
-    Internally, DataFrames are keyed by their generated ID (e.g., "df_00000001"),
-    not by user-provided names. This design choice ensures:
-
-    1. **Single source of truth**: Both the reference registry and the SQL context
-        use the same key (ID), eliminating synchronization bugs.
-    2. **SQL safety**: User-provided names may contain spaces, reserved words, or
-        special characters. The generated ID is always SQL-safe.
-    3. **LLM consistency**: LLMs should always use IDs in SQL queries. Keying by
-        ID reinforces this as the canonical identifier.
-
-    User-friendly names are stored in the DataFrameReference and resolved via
-    O(n) scan when needed. This is acceptable because:
-    - Typical usage involves 2-20 DataFrames, making O(n) effectively O(1).
-    - Name lookups happen at registration/unregistration, not during queries.
+Design Note:
+    DataFrames are keyed internally by generated ID (e.g., "df_00000001") for
+    SQL safety and consistency. User-friendly names are stored in references and
+    looked up via O(n) scan, which is acceptable for typical usage (2-20 DataFrames).
 """
 
 from __future__ import annotations
@@ -54,6 +43,8 @@ from dfkit.persistence import REL_TOL_DEFAULT, restore_registry_from_state
 from dfkit.polars_utils import to_markdown_table
 from dfkit.registry import DataFrameRegistry
 from dfkit.sql_utils import DESTRUCTIVE_COMMANDS, extract_table_names, validate_sql
+from dfkit.tool_module import ToolModule
+from dfkit.tool_module_context import ToolModuleContext
 
 
 class DataFrameToolkit:
@@ -62,6 +53,9 @@ class DataFrameToolkit:
     This toolkit provides a high-level interface for working with DataFrames in
     LLM agent contexts. It maintains a registry of DataFrames with descriptive
     metadata that helps agents understand and query the data.
+
+    Attributes:
+        CORE_SYSTEM_PROMPT (str): System prompt describing core toolkit tools and workflow.
 
     Examples:
         >>> import polars as pl
@@ -93,6 +87,24 @@ class DataFrameToolkit:
         >>> new_toolkit = DataFrameToolkit.from_state(state, {"sales": df1})
     """
 
+    CORE_SYSTEM_PROMPT: str = (
+        "You have access to a DataFrame toolkit with the following core "
+        "tools:\n\n"
+        "- **list_dataframes**: List all available DataFrames with their "
+        "names, IDs, and schema information.\n"
+        "- **get_dataframe_id**: Get the unique ID for a DataFrame by its "
+        "human-readable name. Use IDs in SQL queries.\n"
+        "- **get_dataframe_reference**: Get detailed schema information "
+        "about a DataFrame by name or ID.\n"
+        "- **execute_sql**: Execute a SQL SELECT query against registered "
+        "DataFrames. Use DataFrame IDs as table names.\n"
+        "- **view_as_markdown_table**: View a DataFrame as a formatted "
+        "markdown table for data inspection.\n\n"
+        "Workflow: First use list_dataframes to discover available data, "
+        "then get_dataframe_id to get IDs, then execute_sql to query using "
+        "those IDs."
+    )
+
     def __init__(self, registry: DataFrameRegistry | None = None) -> None:
         """Initialize the toolkit with an optional DataFrame registry.
 
@@ -102,7 +114,6 @@ class DataFrameToolkit:
         """
         self._registry = registry if registry is not None else DataFrameRegistry()
 
-        # Initialize tools
         self._core_tools = (
             tool(self.get_dataframe_id),
             tool(self.get_dataframe_reference),
@@ -111,28 +122,76 @@ class DataFrameToolkit:
             tool(self.view_as_markdown_table),
         )
 
+        self._tool_module_context = ToolModuleContext(
+            registry=self._registry,
+            get_dataframe_fn=self._get_dataframe,
+            get_dataframe_reference_fn=self._get_dataframe_reference,
+            validate_dataframe_name_fn=self._validate_dataframe_name,
+        )
+        self._module_cache: dict[type[ToolModule], ToolModule] = {}
+
     # -------------------------------------------------------------------------
     # Tool Access (Main API)
     # -------------------------------------------------------------------------
 
-    def get_tools(self) -> list[BaseTool]:
-        """Return all LangChain tools for this toolkit.
+    def get_tools(
+        self,
+        *module_classes: type[ToolModule],
+        exclude: set[str] | None = None,
+    ) -> list[BaseTool]:
+        """Return LangChain tools for this toolkit.
 
-        Combines tools from all categories (core, statistical, plotting, etc.)
-        into a single list for convenient agent configuration.
+        Composes core tools with optional module tools, with per-call exclusion.
+        This enables per-agent customization where different agents receive
+        different subsets of tools based on their needs.
+
+        Args:
+            *module_classes (type[ToolModule]): Optional tool module classes to include.
+                Modules are instantiated on first access and cached.
+            exclude (set[str] | None): Optional set of tool names to exclude from the
+                result. Applies to both core tools and module tools. Defaults to None.
 
         Returns:
-            list[BaseTool]: All available tools for this toolkit instance.
+            list[BaseTool]: Combined list of core tools and module tools, minus any
+                excluded tools.
 
         Examples:
+            Get core tools only (backward compatible):
+
             >>> import polars as pl
             >>> toolkit = DataFrameToolkit()
             >>> _ = toolkit.register_dataframe("test", pl.DataFrame({"a": [1, 2, 3]}))
             >>> tools = toolkit.get_tools()
             >>> len(tools) >= 1
             True
+
+            Exclude specific tools:
+
+            >>> toolkit = DataFrameToolkit()
+            >>> tools = toolkit.get_tools(exclude={"view_as_markdown_table"})
+            >>> tool_names = {t.name for t in tools}
+            >>> "view_as_markdown_table" in tool_names
+            False
+
+            Get core tools plus a custom module::
+
+                toolkit.get_tools(StatsModule)
+                toolkit.get_tools(StatsModule, PlottingModule)
+                toolkit.get_tools(StatsModule, exclude={"execute_sql"})
         """
-        return list(self._core_tools)
+        tools = list(self._core_tools)
+
+        # dict.fromkeys preserves insertion order while deduplicating
+        unique_module_classes = list(dict.fromkeys(module_classes))
+
+        for module_class in unique_module_classes:
+            module = self._get_or_create_module(module_class)
+            tools.extend(module.get_tools())
+
+        if exclude is not None:
+            tools = [t for t in tools if t.name not in exclude]
+
+        return tools
 
     def get_core_tools(self) -> list[BaseTool]:
         """Return core DataFrame management tools.
@@ -152,6 +211,60 @@ class DataFrameToolkit:
             True
         """
         return list(self._core_tools)
+
+    def get_system_prompt(
+        self,
+        *module_classes: type[ToolModule],
+        exclude: set[str] | None = None,
+    ) -> str:
+        """Generate a system prompt for the toolkit with optional module prompts.
+
+        Combines the core system prompt with prompts from specified modules,
+        respecting exclusions to accurately describe available tools. This enables
+        per-agent customization where different agents receive different guidance
+        based on their tool subsets.
+
+        Args:
+            *module_classes (type[ToolModule]): Optional tool module classes to include.
+                Modules are instantiated on first access and cached.
+            exclude (set[str] | None): Optional set of tool names to exclude. If provided,
+                the system prompt will note which tools are unavailable. Defaults to None.
+
+        Returns:
+            str: Combined system prompt describing available tools and their usage.
+
+        Examples:
+            Get core prompt only:
+
+            >>> toolkit = DataFrameToolkit()
+            >>> prompt = toolkit.get_system_prompt()
+            >>> "list_dataframes" in prompt
+            True
+
+            Exclude tools and document unavailability:
+
+            >>> toolkit = DataFrameToolkit()
+            >>> prompt = toolkit.get_system_prompt(exclude={"view_as_markdown_table"})
+            >>> "not available" in prompt
+            True
+
+            Get core prompt plus module prompt::
+
+                toolkit.get_system_prompt(StatsModule)
+                toolkit.get_system_prompt(StatsModule, PlottingModule)
+                toolkit.get_system_prompt(StatsModule, exclude={"execute_sql"})
+        """
+        prompt_parts = [self.CORE_SYSTEM_PROMPT]
+
+        if exclude is not None:
+            excluded_core_note = self._build_excluded_core_note(exclude)
+            if excluded_core_note:
+                prompt_parts.append(excluded_core_note)
+
+        module_prompts = self._build_module_prompts(module_classes, exclude)
+        prompt_parts.extend(module_prompts)
+
+        return "".join(prompt_parts)
 
     # -------------------------------------------------------------------------
     # Public Methods
@@ -209,7 +322,7 @@ class DataFrameToolkit:
             msg = f"DataFrame name '{name}' cannot match ID pattern 'df_<8 hex chars>'"
             raise ValueError(msg)
 
-        if self._name_exists(name):
+        if self._dataframe_name_exists(name):
             msg = f"DataFrame '{name}' is already registered"
             raise ValueError(msg)
 
@@ -309,8 +422,7 @@ class DataFrameToolkit:
             >>> _ = toolkit.register_dataframe("test", df)
             >>> toolkit.unregister_dataframe("test")
         """
-        # Resolve name to reference, raising KeyError if not found
-        reference = self._get_reference_by_name(name)
+        reference = self._get_dataframe_reference_by_name(name)
 
         self._registry.unregister(reference.id)
 
@@ -353,7 +465,7 @@ class DataFrameToolkit:
             )
 
         try:
-            reference = self._get_reference_by_name(name)
+            reference = self._get_dataframe_reference_by_name(name)
             return reference.id
         except KeyError:
             return ToolCallError(
@@ -406,7 +518,7 @@ class DataFrameToolkit:
             >>> toolkit.get_dataframe_reference(ref.id)  # doctest: +ELLIPSIS
             DataFrameReference(...)
         """
-        return self._resolve_reference(identifier)
+        return self._get_dataframe_reference(identifier)
 
     def execute_sql(
         self,
@@ -446,7 +558,7 @@ class DataFrameToolkit:
             >>> isinstance(result, DataFrameReference)
             True
         """
-        name_error = self._validate_result_name(result_name)
+        name_error = self._validate_dataframe_name(result_name)
         if name_error is not None:
             return name_error
 
@@ -535,7 +647,6 @@ class DataFrameToolkit:
         if isinstance(df, ToolCallError):
             return df
 
-        # Convert to markdown table, catching validation errors
         try:
             return to_markdown_table(
                 df,
@@ -645,11 +756,112 @@ class DataFrameToolkit:
     # Private Helpers
     # -------------------------------------------------------------------------
 
-    def _get_reference_by_name(self, name: str) -> DataFrameReference:
-        """Resolve a user-friendly name to its DataFrameReference.
+    def _get_or_create_module(self, module_class: type[ToolModule]) -> ToolModule:
+        """Get a cached module instance, creating it on first access.
+
+        Args:
+            module_class (type[ToolModule]): The module class to instantiate.
+
+        Returns:
+            ToolModule: The cached or newly created module instance.
+
+        Raises:
+            TypeError: If the module class cannot be instantiated with a
+                ToolModuleContext argument.
+        """
+        # Not thread-safe: cache check and creation are separate steps
+        if module_class not in self._module_cache:
+            try:
+                # Get or create the module instance and cache it
+                # Using setdefault ensures only one instance is created even if multiple threads access simultaneously
+                self._module_cache.setdefault(module_class, module_class(self._tool_module_context))
+            except Exception as e:
+                msg = (
+                    f"Failed to instantiate {module_class.__name__}. "
+                    f"Tool modules must accept a single ToolModuleContext argument: "
+                    f"__init__(self, context: ToolModuleContext). Got: {e}"
+                )
+                raise TypeError(msg) from e
+        return self._module_cache[module_class]
+
+    def _build_excluded_core_note(self, exclude: set[str]) -> str:
+        """Build a note about excluded core tools.
+
+        Args:
+            exclude (set[str]): Set of tool names to exclude.
+
+        Returns:
+            str: Note about excluded core tools, or empty string if none excluded.
+        """
+        core_tool_names = {t.name for t in self._core_tools}
+        excluded_core = core_tool_names & exclude
+        if not excluded_core:
+            return ""
+
+        excluded_list = ", ".join(sorted(excluded_core))
+        return f"\nNote: The following tools are not available in this context: {excluded_list}"
+
+    def _build_module_prompts(
+        self,
+        module_classes: tuple[type[ToolModule], ...],
+        exclude: set[str] | None,
+    ) -> list[str]:
+        """Build system prompt sections for modules.
+
+        Args:
+            module_classes (tuple[type[ToolModule], ...]): Module classes to include.
+            exclude (set[str] | None): Optional set of tool names to exclude.
+
+        Returns:
+            list[str]: List of prompt sections for each module.
+        """
+        # dict.fromkeys preserves insertion order while deduplicating
+        unique_module_classes = list(dict.fromkeys(module_classes))
+        prompts = []
+
+        for module_class in unique_module_classes:
+            module_prompt = self._build_module_prompt(module_class, exclude)
+            if module_prompt:
+                prompts.append(module_prompt)
+
+        return prompts
+
+    def _build_module_prompt(
+        self,
+        module_class: type[ToolModule],
+        exclude: set[str] | None,
+    ) -> str:
+        """Build system prompt section for a single module.
+
+        Args:
+            module_class (type[ToolModule]): The module class.
+            exclude (set[str] | None): Optional set of tool names to exclude.
+
+        Returns:
+            str: Prompt section for the module, or empty string if all tools excluded.
+        """
+        module = self._get_or_create_module(module_class)
+        module_tool_names = {t.name for t in module.get_tools()}
+
+        excluded_module_tool_names = module_tool_names & exclude if exclude is not None else set()
+
+        # If all module tools are excluded (or module has no tools), omit its prompt entirely
+        if excluded_module_tool_names == module_tool_names:
+            return ""
+
+        parts = [f"\n## {module_class.__name__}\n", module.system_prompt]
+
+        if excluded_module_tool_names:
+            excluded_list = ", ".join(sorted(excluded_module_tool_names))
+            parts.append(f"\n\nNote: The following tools are not available in this context: {excluded_list}")
+
+        return "".join(parts)
+
+    def _get_dataframe_reference_by_name(self, name: str) -> DataFrameReference:
+        """Get a DataFrameReference by its user-friendly name.
 
         Performs O(n) scan over registered references. This is acceptable because
-        typical usage involves few DataFrames (2-20), and name resolution only
+        typical usage involves few DataFrames (2-20), and name lookup only
         occurs during registration/unregistration, not during queries.
 
         Args:
@@ -668,9 +880,9 @@ class DataFrameToolkit:
         raise KeyError(msg)
 
     def _get_dataframe(self, identifier: str) -> pl.DataFrame | ToolCallError:
-        """Resolve an identifier and retrieve its DataFrame.
+        """Get a DataFrame by its identifier (name or ID).
 
-        Resolves the identifier to a reference, then fetches the actual
+        Looks up the identifier to find a reference, then fetches the actual
         DataFrame from the SQL context. Returns ToolCallError if the
         identifier cannot be found.
 
@@ -678,42 +890,39 @@ class DataFrameToolkit:
             identifier (str): Either the DataFrame name or its ID (df_xxxxxxxx).
 
         Returns:
-            pl.DataFrame | ToolCallError: The resolved DataFrame, or
+            pl.DataFrame | ToolCallError: The matching DataFrame, or
                 ToolCallError if not found.
 
         Raises:
-            RuntimeError: If the reference resolves in the registry but the
+            RuntimeError: If the reference exists in the registry but the
                 DataFrame is missing from the SQL context (internal invariant
                 violation).
         """
-        resolved = self._resolve_reference(identifier)
-        if isinstance(resolved, ToolCallError):
-            return resolved
+        ref = self._get_dataframe_reference(identifier)
+        if isinstance(ref, ToolCallError):
+            return ref
 
         try:
-            df = self._registry.context.get_dataframe(resolved.id)
+            df = self._registry.context.get_dataframe(ref.id)
         except KeyError as e:
-            msg = (
-                f"DataFrame '{resolved.id}' resolved in registry but missing "
-                f"from SQL context (identifier={identifier!r})"
-            )
+            msg = f"DataFrame '{ref.id}' found in registry but missing from SQL context (identifier={identifier!r})"
             raise RuntimeError(msg) from e
 
         if isinstance(df, pl.LazyFrame):
             df = df.collect()
         return df
 
-    def _resolve_reference(self, identifier: str) -> DataFrameReference | ToolCallError:
-        """Resolve a name or ID to its DataFrameReference.
+    def _get_dataframe_reference(self, identifier: str) -> DataFrameReference | ToolCallError:
+        """Get a DataFrameReference by its identifier (name or ID).
 
         Tries lookup by ID first (O(1)), then falls back to name lookup (O(n)).
-        Returns a ToolCallError if neither resolves.
+        Returns a ToolCallError if no match is found.
 
         Args:
             identifier (str): Either the DataFrame name or its ID (df_xxxxxxxx).
 
         Returns:
-            DataFrameReference | ToolCallError: The resolved reference, or
+            DataFrameReference | ToolCallError: The matching reference, or
                 ToolCallError if no DataFrame matches the identifier.
         """
         # Try lookup by ID first (O(1) since registry.references is keyed by ID)
@@ -722,7 +931,7 @@ class DataFrameToolkit:
 
         # Try lookup by name (O(n) scan)
         try:
-            return self._get_reference_by_name(identifier)
+            return self._get_dataframe_reference_by_name(identifier)
         except KeyError:
             pass
 
@@ -735,26 +944,26 @@ class DataFrameToolkit:
             },
         )
 
-    def _validate_result_name(self, result_name: str) -> ToolCallError | None:
+    def _validate_dataframe_name(self, dataframe_name: str) -> ToolCallError | None:
         """Validate that a result name is acceptable for registration.
 
         Args:
-            result_name (str): The proposed name for the result DataFrame.
+            dataframe_name (str): The proposed name for the result DataFrame.
 
         Returns:
             ToolCallError | None: Error if the name is invalid, None if valid.
         """
-        if DATAFRAME_ID_PATTERN.match(result_name):
+        if DATAFRAME_ID_PATTERN.match(dataframe_name):
             return ToolCallError(
                 error_type="InvalidArgument",
-                message=f"Result name '{result_name}' cannot match ID pattern 'df_<8 hex chars>'",
+                message=f"Result name '{dataframe_name}' cannot match ID pattern 'df_<8 hex chars>'",
                 details={"suggestion": "Choose a descriptive name that doesn't look like a DataFrame ID"},
             )
 
-        if self._name_exists(result_name):
+        if self._dataframe_name_exists(dataframe_name):
             return ToolCallError(
                 error_type="DuplicateName",
-                message=f"DataFrame name '{result_name}' is already registered",
+                message=f"DataFrame name '{dataframe_name}' is already registered",
                 details={"suggestion": "Choose a different name for the result"},
             )
 
@@ -816,7 +1025,7 @@ class DataFrameToolkit:
         """
         return {ref.id: set(ref.column_names) for ref in self._registry.references.values()}
 
-    def _name_exists(self, name: str) -> bool:
+    def _dataframe_name_exists(self, name: str) -> bool:
         """Check if a name is already registered.
 
         Args:

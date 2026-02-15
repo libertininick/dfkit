@@ -15,8 +15,8 @@ from dfkit.models import (
 )
 from dfkit.persistence import (
     _compare_column_summaries,
+    _map_dataframe_keys_to_ids,
     _reconstruct_derivatives,
-    _resolve_dataframe_keys_to_ids,
     _sort_references_by_dependency_order,
     _validate_dataframe_matches_reference,
     _values_nearly_equal,
@@ -495,10 +495,10 @@ class TestValidateDataframeMatchesReference:
             _validate_dataframe_matches_reference(df_different, reference)
 
 
-class TestResolveDataframeKeysToIds:
-    """Tests for _resolve_dataframe_keys_to_ids function."""
+class TestMapDataframeKeysToIds:
+    """Tests for _map_dataframe_keys_to_ids function."""
 
-    def test_resolve_dataframe_keys_to_ids_by_name(self) -> None:
+    def test_map_dataframe_keys_to_ids_by_name(self) -> None:
         """Given dataframes keyed by name, When normalized, Then returns ID-keyed mapping."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2, 3]})
@@ -506,7 +506,7 @@ class TestResolveDataframeKeysToIds:
         dataframes = {"users": df}
 
         # Act
-        result = _resolve_dataframe_keys_to_ids(
+        result = _map_dataframe_keys_to_ids(
             dataframes=dataframes,
             names_to_ids=names_to_ids,
         )
@@ -517,7 +517,7 @@ class TestResolveDataframeKeysToIds:
         with check:
             assert result["df_00000001"] is df
 
-    def test_resolve_dataframe_keys_to_ids_by_id(self) -> None:
+    def test_map_dataframe_keys_to_ids_by_id(self) -> None:
         """Given dataframes keyed by ID, When normalized, Then returns ID-keyed mapping."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2, 3]})
@@ -525,7 +525,7 @@ class TestResolveDataframeKeysToIds:
         dataframes = {"df_00000001": df}
 
         # Act
-        result = _resolve_dataframe_keys_to_ids(
+        result = _map_dataframe_keys_to_ids(
             dataframes=dataframes,
             names_to_ids=names_to_ids,
         )
@@ -536,7 +536,7 @@ class TestResolveDataframeKeysToIds:
         with check:
             assert result["df_00000001"] is df
 
-    def test_resolve_dataframe_keys_to_ids_unknown_name_raises(self) -> None:
+    def test_map_dataframe_keys_to_ids_unknown_name_raises(self) -> None:
         """Given unknown name key, When normalized, Then raises ValueError."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2, 3]})
@@ -545,14 +545,14 @@ class TestResolveDataframeKeysToIds:
 
         # Act/Assert
         with pytest.raises(ValueError, match="Name 'unknown_name' not in state's base references"):
-            _resolve_dataframe_keys_to_ids(
+            _map_dataframe_keys_to_ids(
                 dataframes=dataframes,
                 names_to_ids=names_to_ids,
             )
 
-    def test_resolve_dataframe_keys_to_ids_duplicate_name_and_id_raises(self) -> None:
+    def test_map_dataframe_keys_to_ids_duplicate_name_and_id_raises(self) -> None:
         """Given same base provided by both name and ID, When normalized, Then raises ValueError."""
-        # Arrange - "users" resolves to "df_00000001", so both keys target the same ID
+        # Arrange - "users" maps to "df_00000001", so both keys target the same ID
         names_to_ids = {"users": "df_00000001", "orders": "df_00000002"}
         df_a = pl.DataFrame({"a": [1, 2, 3]})
         df_b = pl.DataFrame({"a": [4, 5, 6]})
@@ -560,12 +560,12 @@ class TestResolveDataframeKeysToIds:
 
         # Act/Assert
         with pytest.raises(ValueError, match="Duplicate"):
-            _resolve_dataframe_keys_to_ids(
+            _map_dataframe_keys_to_ids(
                 dataframes=dataframes,
                 names_to_ids=names_to_ids,
             )
 
-    def test_resolve_dataframe_keys_to_ids_unknown_id_raises(self) -> None:
+    def test_map_dataframe_keys_to_ids_unknown_id_raises(self) -> None:
         """Given unknown ID key, When normalized, Then raises ValueError."""
         # Arrange
         df = pl.DataFrame({"a": [1, 2, 3]})
@@ -574,15 +574,15 @@ class TestResolveDataframeKeysToIds:
 
         # Act/Assert
         with pytest.raises(ValueError, match="ID 'df_99999999' not in state's base references"):
-            _resolve_dataframe_keys_to_ids(
+            _map_dataframe_keys_to_ids(
                 dataframes=dataframes,
                 names_to_ids=names_to_ids,
             )
 
-    def test_resolve_dataframe_keys_to_ids_empty_inputs_returns_empty(self) -> None:
+    def test_map_dataframe_keys_to_ids_empty_inputs_returns_empty(self) -> None:
         """Given empty dataframes and names_to_ids, When normalized, Then returns empty dict."""
         # Arrange/Act
-        result = _resolve_dataframe_keys_to_ids(
+        result = _map_dataframe_keys_to_ids(
             dataframes={},
             names_to_ids={},
         )

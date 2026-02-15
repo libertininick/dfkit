@@ -87,7 +87,7 @@ def restore_registry_from_state(
     base_refs = {ref.id: ref for ref in state.references if ref.is_base}
 
     # 2. Normalize user keys to DataFrameId
-    normalized_bases = _resolve_dataframe_keys_to_ids(
+    normalized_bases = _map_dataframe_keys_to_ids(
         dataframes=base_dataframes,
         names_to_ids={ref.name: ref.id for ref in base_refs.values()},
     )
@@ -117,7 +117,7 @@ def restore_registry_from_state(
 # Private helpers
 
 
-def _resolve_dataframe_keys_to_ids(
+def _map_dataframe_keys_to_ids(
     *,
     dataframes: Mapping[str, pl.DataFrame],
     names_to_ids: dict[str, DataFrameId],
@@ -135,7 +135,7 @@ def _resolve_dataframe_keys_to_ids(
 
     Raises:
         ValueError: If a key doesn't match any base reference, or if
-            multiple keys resolve to the same DataFrameId.
+            multiple keys map to the same DataFrameId.
     """
     ids = set(names_to_ids.values())
     name_or_id_to_id: dict[str | DataFrameId, DataFrameId] = names_to_ids | {df_id: df_id for df_id in ids}
@@ -151,12 +151,12 @@ def _resolve_dataframe_keys_to_ids(
             )
             raise ValueError(msg)
 
-        # Check for duplicate IDs (multiple keys resolving to the same ID)
+        # Check for duplicate IDs (multiple keys mapping to the same ID)
         if df_id in normalized:
-            msg = f"Duplicate: key '{name_or_id}' resolves to ID '{df_id}' which was already provided"
+            msg = f"Duplicate: key '{name_or_id}' maps to ID '{df_id}' which was already provided"
             raise ValueError(msg)
 
-        # Store the dataframe under its resolved ID
+        # Store the dataframe under its mapped ID
         normalized[df_id] = dataframe
 
     return normalized
