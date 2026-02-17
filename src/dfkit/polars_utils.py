@@ -3,10 +3,46 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TypeGuard
 
 import polars as pl
 
 from dfkit.exceptions import ColumnsNotFoundError, DuplicateColumnsError
+
+
+def is_dataframe(obj: pl.DataFrame | pl.LazyFrame | object) -> TypeGuard[pl.DataFrame]:
+    """Type guard to narrow DataFrame | LazyFrame | InProcessQuery to DataFrame.
+
+    Args:
+        obj (pl.DataFrame | pl.LazyFrame | object): Object to check, typically
+            from Polars operations that may return DataFrame, LazyFrame, or
+            InProcessQuery.
+
+    Returns:
+        TypeGuard[pl.DataFrame]: True if obj is a DataFrame, False otherwise.
+    """
+    return isinstance(obj, pl.DataFrame)
+
+
+def ensure_dataframe(obj: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
+    """Collect a LazyFrame if needed and verify the result is a DataFrame.
+
+    Args:
+        obj (pl.DataFrame | pl.LazyFrame): A Polars DataFrame or LazyFrame.
+            LazyFrames are collected eagerly.
+
+    Returns:
+        pl.DataFrame: The verified DataFrame.
+
+    Raises:
+        TypeError: If the result after collection is not a DataFrame.
+    """
+    # Collect if it's a LazyFrame, otherwise return as is. Then verify it's a DataFrame.
+    result = obj.collect() if isinstance(obj, pl.LazyFrame) else obj
+    if not is_dataframe(result):
+        msg = f"Expected DataFrame, got {type(result).__name__}"
+        raise TypeError(msg)
+    return result
 
 
 def get_series_description(

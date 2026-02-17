@@ -8,6 +8,7 @@ from polars.exceptions import SQLInterfaceError
 from pytest_check import check
 
 from dfkit.context import DataFrameContext
+from dfkit.polars_utils import is_dataframe
 
 
 @pytest.fixture
@@ -400,6 +401,9 @@ class TestSQLQueryExecution:
 
         Args:
             sample_lazy_df (pl.LazyFrame): Sample LazyFrame fixture.
+
+        Raises:
+            TypeError: If collect() does not return a DataFrame.
         """
         ctx = DataFrameContext()
         ctx.register("df_00000001", sample_lazy_df)
@@ -411,6 +415,9 @@ class TestSQLQueryExecution:
 
         # Collect and verify data
         collected = result.collect()
+        if not is_dataframe(collected):
+            msg = f"Expected DataFrame after collect(), got {type(collected).__name__}"
+            raise TypeError(msg)
         with check:
             assert collected.shape == (2, 1), "Collected result should have 2 rows and 1 column"
         with check:
@@ -879,12 +886,18 @@ class TestSQLContextSynchronization:
         Args:
             sample_df (pl.DataFrame): Sample eager DataFrame fixture.
             sample_df_2 (pl.DataFrame): Second sample eager DataFrame fixture.
+
+        Raises:
+            TypeError: If execute_sql does not return a DataFrame.
         """
         ctx = DataFrameContext()
 
         # Register initial frame
         ctx.register("df_00000001", sample_df)
         result1 = ctx.execute_sql("SELECT COUNT(*) as count FROM df_00000001", eager=True)
+        if not is_dataframe(result1):
+            msg = f"Expected DataFrame from execute_sql(eager=True), got {type(result1).__name__}"
+            raise TypeError(msg)
         with check:
             assert result1["count"][0] == 3, "Initial query should work"
 
@@ -896,6 +909,9 @@ class TestSQLContextSynchronization:
         # Re-register with different data
         ctx.register("df_00000001", sample_df_2)
         result2 = ctx.execute_sql("SELECT COUNT(*) as count FROM df_00000001", eager=True)
+        if not is_dataframe(result2):
+            msg = f"Expected DataFrame from execute_sql(eager=True), got {type(result2).__name__}"
+            raise TypeError(msg)
         with check:
             assert result2["count"][0] == 3, "Query should work after re-registration"
 

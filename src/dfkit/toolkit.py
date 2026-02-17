@@ -16,10 +16,12 @@ Design Note:
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Mapping, Sequence
 
 import polars as pl
 from langchain_core.tools import BaseTool, tool
+from loguru import logger
 from sqlglot import exp
 
 from dfkit.exceptions import (
@@ -34,13 +36,14 @@ from dfkit.identifier import (
     DATAFRAME_ID_PATTERN,
     DataFrameId,
 )
+from dfkit.logging import TOOL_CALL_LEVEL
 from dfkit.models import (
     DataFrameReference,
     DataFrameToolkitState,
     ToolCallError,
 )
 from dfkit.persistence import REL_TOL_DEFAULT, restore_registry_from_state
-from dfkit.polars_utils import to_markdown_table
+from dfkit.polars_utils import ensure_dataframe, to_markdown_table
 from dfkit.registry import DataFrameRegistry
 from dfkit.sql_utils import DESTRUCTIVE_COMMANDS, extract_table_names, validate_sql
 from dfkit.tool_module import ToolModule
@@ -326,10 +329,12 @@ class DataFrameToolkit:
         """
         if DATAFRAME_ID_PATTERN.match(name):
             msg = f"DataFrame name '{name}' cannot match ID pattern 'df_<8 hex chars>'"
+            logger.warning("DataFrame registration failed", name=name, reason=msg)
             raise ValueError(msg)
 
         if self._dataframe_name_exists(name):
             msg = f"DataFrame '{name}' is already registered"
+            logger.warning("DataFrame registration failed", name=name, reason=msg)
             raise ValueError(msg)
 
         reference = DataFrameReference.from_dataframe(
@@ -340,6 +345,14 @@ class DataFrameToolkit:
         )
 
         self._registry.register(reference, dataframe)
+
+        logger.info(
+            "DataFrame registered",
+            name=name,
+            dataframe_id=reference.id,
+            shape=dataframe.shape,
+            column_count=len(dataframe.columns),
+        )
 
         return reference
 
@@ -410,6 +423,15 @@ class DataFrameToolkit:
         # Register each dataframe with its reference atomically
         for ref, df in zip(references, dataframes.values(), strict=True):
             self._registry.register(ref, df)
+            logger.info(
+                "DataFrame registered",
+                name=ref.name,
+                dataframe_id=ref.id,
+                shape=df.shape,
+                column_count=len(df.columns),
+            )
+
+        logger.info("DataFrames registered", count=len(references), names=[r.name for r in references])
 
         return references
 
@@ -431,6 +453,8 @@ class DataFrameToolkit:
         reference = self._get_dataframe_reference_by_name(name)
 
         self._registry.unregister(reference.id)
+
+        logger.info("DataFrame unregistered", name=name, dataframe_id=reference.id)
 
     def get_dataframe_id(self, name: str) -> DataFrameId | ToolCallError:
         """Get the DataFrameId for a DataFrame by its name.
@@ -457,9 +481,12 @@ class DataFrameToolkit:
             >>> toolkit.get_dataframe_id("df_1a2b3c4d")  # doctest: +ELLIPSIS
             ToolCallError(error_type='InvalidArgument', ...)
         """
+        tool_name = _current_tool_name()
+        logger.log(TOOL_CALL_LEVEL, _TOOL_CALL_MSG.format(tool_name=tool_name), name=name)
+
         # Guard: detect if an ID was passed instead of a name
         if DATAFRAME_ID_PATTERN.match(name):
-            return ToolCallError(
+            result = ToolCallError(
                 error_type="InvalidArgument",
                 message=(
                     f"'{name}' is already an ID, not a name. "
@@ -469,16 +496,31 @@ class DataFrameToolkit:
                 ),
                 details={"available_names": [ref.name for ref in self._registry.references.values()]},
             )
+            logger.warning(
+                _TOOL_CALL_ERROR_MSG.format(tool_name=tool_name),
+                name=name,
+                error_type=result.error_type,
+                message=result.message,
+            )
+            return result
 
         try:
             reference = self._get_dataframe_reference_by_name(name)
+            logger.debug(_TOOL_CALL_RESULT_MSG.format(tool_name=tool_name), name=name, dataframe_id=str(reference.id))
             return reference.id
         except KeyError:
-            return ToolCallError(
+            result = ToolCallError(
                 error_type="DataFrameNotFound",
                 message=f"DataFrame '{name}' is not registered",
                 details={"available_names": [ref.name for ref in self._registry.references.values()]},
             )
+            logger.warning(
+                _TOOL_CALL_ERROR_MSG.format(tool_name=tool_name),
+                name=name,
+                error_type=result.error_type,
+                message=result.message,
+            )
+            return result
 
     def list_dataframes(self) -> list[DataFrameReference]:
         """List all available DataFrames in the toolkit.
@@ -499,7 +541,13 @@ class DataFrameToolkit:
             >>> len(toolkit.list_dataframes())
             1
         """
-        return list(self._registry.references.values())
+        tool_name = _current_tool_name()
+        logger.log(TOOL_CALL_LEVEL, _TOOL_CALL_MSG.format(tool_name=tool_name))
+        result = list(self._registry.references.values())
+        logger.debug(
+            _TOOL_CALL_RESULT_MSG.format(tool_name=tool_name), count=len(result), names=[r.name for r in result]
+        )
+        return result
 
     def get_dataframe_reference(self, identifier: str) -> DataFrameReference | ToolCallError:
         """Get detailed information about a DataFrame by name or ID.
@@ -524,7 +572,21 @@ class DataFrameToolkit:
             >>> toolkit.get_dataframe_reference(ref.id)  # doctest: +ELLIPSIS
             DataFrameReference(...)
         """
-        return self._get_dataframe_reference(identifier)
+        tool_name = _current_tool_name()
+        logger.log(TOOL_CALL_LEVEL, _TOOL_CALL_MSG.format(tool_name=tool_name), identifier=identifier)
+        result = self._get_dataframe_reference(identifier)
+        if isinstance(result, ToolCallError):
+            logger.warning(
+                _TOOL_CALL_ERROR_MSG.format(tool_name=tool_name), identifier=identifier, error_type=result.error_type
+            )
+        else:
+            logger.debug(
+                _TOOL_CALL_RESULT_MSG.format(tool_name=tool_name),
+                identifier=identifier,
+                name=result.name,
+                dataframe_id=result.id,
+            )
+        return result
 
     def execute_sql(
         self,
@@ -564,27 +626,41 @@ class DataFrameToolkit:
             >>> isinstance(result, DataFrameReference)
             True
         """
+        tool_name = _current_tool_name()
+        logger.log(TOOL_CALL_LEVEL, _TOOL_CALL_MSG.format(tool_name=tool_name), result_name=result_name, query=query)
+
         name_error = self._validate_dataframe_name(result_name)
         if name_error is not None:
+            logger.warning(
+                _TOOL_CALL_ERROR_MSG.format(tool_name=tool_name), error_type=name_error.error_type, query=query
+            )
             return name_error
 
         validated_expression = self._validate_query(query)
         if isinstance(validated_expression, ToolCallError):
+            logger.warning(
+                _TOOL_CALL_ERROR_MSG.format(tool_name=tool_name),
+                error_type=validated_expression.error_type,
+                query=query,
+            )
             return validated_expression
 
         try:
             result_df = self._registry.context.execute_sql(query, eager=True)
         except pl.exceptions.PolarsError as e:
-            return ToolCallError(
+            result = ToolCallError(
                 error_type="SQLExecutionError",
                 message=f"Query execution failed: {e}",
                 details={"query": query},
             )
+            logger.warning(
+                _TOOL_CALL_ERROR_MSG.format(tool_name=tool_name), error_type="SQLExecutionError", query=query
+            )
+            return result
 
         # Polars SQLContext.execute_sql(eager=True) should always return a DataFrame,
         # but guard against LazyFrame in case of future API changes.
-        if not isinstance(result_df, pl.DataFrame):
-            result_df = result_df.collect()
+        result_df = ensure_dataframe(result_df)
 
         referenced_tables = set(extract_table_names(validated_expression))
         parent_ids = [ref.id for ref in self._registry.references.values() if ref.id.lower() in referenced_tables]
@@ -598,6 +674,13 @@ class DataFrameToolkit:
         )
 
         self._registry.register(reference, result_df)
+
+        logger.debug(
+            _TOOL_CALL_RESULT_MSG.format(tool_name=tool_name), result_name=result_name, dataframe_id=reference.id
+        )
+        logger.info(
+            "DataFrame created via SQL", name=result_name, dataframe_id=reference.id, shape=result_df.shape, query=query
+        )
 
         return reference
 
@@ -649,23 +732,41 @@ class DataFrameToolkit:
             >>> isinstance(result, str)
             True
         """
+        tool_name = _current_tool_name()
+        logger.log(
+            TOOL_CALL_LEVEL,
+            _TOOL_CALL_MSG.format(tool_name=tool_name),
+            identifier=identifier,
+            num_rows=num_rows,
+            sample=sample,
+        )
+
         df = self._get_dataframe(identifier)
         if isinstance(df, ToolCallError):
+            logger.warning(
+                _TOOL_CALL_ERROR_MSG.format(tool_name=tool_name), identifier=identifier, error_type=df.error_type
+            )
             return df
 
         try:
-            return to_markdown_table(
+            result = to_markdown_table(
                 df,
                 columns=columns,
                 num_rows=num_rows,
                 sample=sample,
                 seed=seed,
             )
+            logger.debug(_TOOL_CALL_RESULT_MSG.format(tool_name=tool_name), identifier=identifier)
+            return result
         except (ColumnsNotFoundError, DuplicateColumnsError) as e:
-            return _handle_column_validation_error(e, columns, df.columns)
+            error = _handle_column_validation_error(e, columns, df.columns)
+            logger.warning(
+                _TOOL_CALL_ERROR_MSG.format(tool_name=tool_name), identifier=identifier, error_type=error.error_type
+            )
+            return error
         # Catches remaining ValueError cases: num_rows < 1, seed without sample=True
         except ValueError as e:
-            return ToolCallError(
+            result = ToolCallError(
                 error_type="InvalidArgument",
                 message=str(e),
                 details={
@@ -675,6 +776,10 @@ class DataFrameToolkit:
                     "seed": seed,
                 },
             )
+            logger.warning(
+                _TOOL_CALL_ERROR_MSG.format(tool_name=tool_name), identifier=identifier, error_type=result.error_type
+            )
+            return result
 
     def export_state(self) -> DataFrameToolkitState:
         """Export the current toolkit state for serialization.
@@ -911,8 +1016,7 @@ class DataFrameToolkit:
             msg = f"DataFrame '{ref.id}' found in registry but missing from SQL context (identifier={identifier!r})"
             raise RuntimeError(msg) from e
 
-        if isinstance(df, pl.LazyFrame):
-            df = df.collect()
+        df = ensure_dataframe(df)
         return df
 
     def _get_dataframe_reference(self, identifier: str) -> DataFrameReference | ToolCallError:
@@ -1043,6 +1147,23 @@ class DataFrameToolkit:
 # -----------------------------------------------------------------------------
 # Private Helpers
 # -----------------------------------------------------------------------------
+
+# Tool logging message templates
+_TOOL_CALL_MSG = "Tool call: {tool_name}"
+_TOOL_CALL_ERROR_MSG = "Tool call error: {tool_name}"
+_TOOL_CALL_RESULT_MSG = "Tool call result: {tool_name}"
+
+
+def _current_tool_name() -> str:
+    """Get the name of the calling function via inspect.
+
+    Returns:
+        str: The name of the calling function, or "unknown" if unable to determine.
+    """
+    frame = inspect.currentframe()
+    caller_frame = frame.f_back if frame is not None else None
+    name = caller_frame.f_code.co_name if caller_frame is not None else "unknown"
+    return name
 
 
 def _handle_column_validation_error(

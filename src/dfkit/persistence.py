@@ -30,6 +30,7 @@ from dfkit.models import (
     DataFrameReference,
     DataFrameToolkitState,
 )
+from dfkit.polars_utils import ensure_dataframe
 from dfkit.registry import DataFrameRegistry
 
 __all__ = ["REL_TOL_DEFAULT", "restore_registry_from_state"]
@@ -462,7 +463,6 @@ def _execute_reconstruction_query(source_query: str, name: str, registry: DataFr
 
     Raises:
         ValueError: If SQL execution fails.
-        TypeError: If execute_sql(eager=True) returns non-DataFrame type.
     """
     try:
         result_df = registry.context.execute_sql(source_query, eager=True)
@@ -471,8 +471,6 @@ def _execute_reconstruction_query(source_query: str, name: str, registry: DataFr
         raise ValueError(msg) from e
 
     # Defensive: Polars execute(eager=True) should always return DataFrame per contract.
-    if not isinstance(result_df, pl.DataFrame):
-        msg = f"execute_sql(eager=True) returned {type(result_df).__name__}, expected DataFrame"
-        raise TypeError(msg)
+    result_df = ensure_dataframe(result_df)
 
     return result_df

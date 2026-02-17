@@ -22,6 +22,7 @@ from dfkit.persistence import (
     _values_nearly_equal,
     restore_registry_from_state,
 )
+from dfkit.polars_utils import is_dataframe
 from dfkit.registry import DataFrameRegistry
 
 
@@ -832,7 +833,11 @@ class TestRestoreRegistryFromState:
             assert ref2.id in registry.context
 
     def test_restore_registry_from_state_with_derivative(self) -> None:
-        """Given state with derivative, When restored, Then derivative reconstructed."""
+        """Given state with derivative, When restored, Then derivative reconstructed.
+
+        Raises:
+            TypeError: If get_dataframe does not return a DataFrame.
+        """
         # Arrange
         base_df = pl.DataFrame({"a": [1, 2, 3, 4, 5]})
         base_ref = DataFrameReference.from_dataframe("base", base_df)
@@ -865,6 +870,9 @@ class TestRestoreRegistryFromState:
 
         # Verify reconstructed data
         reconstructed = registry.context.get_dataframe(derived_ref.id)
+        if not is_dataframe(reconstructed):
+            msg = f"Expected DataFrame from get_dataframe(), got {type(reconstructed).__name__}"
+            raise TypeError(msg)
         with check:
             assert reconstructed.shape == (2, 1)
         with check:

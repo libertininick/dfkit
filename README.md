@@ -52,4 +52,13 @@ uv run pre-commit install-hooks \
 && uv run pre-commit autoupdate
 ```
 
+### Run checks
+
+```sh
+uv run ruff check . \
+&& uv run ty check . \
+&& uv tool run pydoclint src/ tests/ \
+&& uv run pytest --cov src/ .
+```
+
 ---

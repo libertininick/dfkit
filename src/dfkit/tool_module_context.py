@@ -49,6 +49,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import polars as pl
+from loguru import logger
 
 from dfkit.identifier import DataFrameId
 from dfkit.models import DataFrameReference, ToolCallError
@@ -212,6 +213,7 @@ class ToolModuleContext:
         """
         error = self._validate_dataframe_name_fn(name)
         if error is not None:
+            logger.warning("Module DataFrame registration failed", name=name, error_type=error.error_type)
             return error
 
         reference = DataFrameReference.from_dataframe(
@@ -224,5 +226,7 @@ class ToolModuleContext:
         )
 
         self._registry.register(reference, dataframe)
+
+        logger.info("DataFrame registered via module", name=name, dataframe_id=reference.id, shape=dataframe.shape)
 
         return reference
