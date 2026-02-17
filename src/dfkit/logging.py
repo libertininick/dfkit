@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import contextlib
 import sys
-from typing import TYPE_CHECKING, Final, Literal
+import warnings
+from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
 from loguru import logger
 
@@ -25,19 +26,20 @@ with contextlib.suppress(ValueError):
 # Register custom TOOL_CALL level (between DEBUG=10 and INFO=20)
 TOOL_CALL_LEVEL: Final[str] = "TOOL_CALL"
 TOOL_CALL_LEVEL_NUMBER: Final[int] = 15  # Between DEBUG (10) and INFO (20)
+WARNING_LEVEL_NUMBER: Final[int] = 30
 try:
     existing_level = logger.level(TOOL_CALL_LEVEL)
 except ValueError:
     # Level does not exist yet; register it
     logger.level(TOOL_CALL_LEVEL, no=TOOL_CALL_LEVEL_NUMBER, icon="🔧")
 else:
-    # Level exists; verify numeric value matches
+    # Level exists; warn if numeric value differs (loguru does not allow changing no)
     if existing_level.no != TOOL_CALL_LEVEL_NUMBER:
         msg = (
             f"TOOL_CALL level already registered with numeric value {existing_level.no},"
             f" expected {TOOL_CALL_LEVEL_NUMBER}"
         )
-        raise ValueError(msg)
+        warnings.warn(msg, stacklevel=2)
 
 # Define valid log levels for enable_logging
 type LogLevel = Literal[
@@ -69,6 +71,8 @@ class LoggingHandle:
         >>> handle.disable()  # doctest: +SKIP
     """
 
+    _active_ids: ClassVar[set[int]] = set()
+
     def __init__(self, handler_id: int) -> None:
         """Initialize the logging handle.
 
@@ -76,14 +80,18 @@ class LoggingHandle:
             handler_id (int): The loguru handler ID from logger.add().
         """
         self.handler_id: int | None = handler_id
+        LoggingHandle._active_ids.add(handler_id)
 
     def disable(self) -> None:
         """Remove the handler associated with this logging handle."""
         if self.handler_id is None:
             return
+        LoggingHandle._active_ids.discard(self.handler_id)
         with contextlib.suppress(ValueError):
             logger.remove(self.handler_id)
         self.handler_id = None
+        if not LoggingHandle._active_ids:
+            logger.disable(PACKAGE_NAME)
 
     def __enter__(self) -> LoggingHandle:
         """Enter context manager.
@@ -100,6 +108,15 @@ class LoggingHandle:
             *args (object): Exception information (type, value, traceback).
         """
         self.disable()
+
+    @classmethod
+    def get_active_handle_count(cls) -> int:
+        """Return the number of currently active logging handles.
+
+        Returns:
+            int: Count of active handles that have not been disabled.
+        """
+        return len(cls._active_ids)
 
 
 def enable_logging(
@@ -147,14 +164,14 @@ def enable_logging(
     if log_format == "short":
         format_str = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-            "<level>{level: <8}</level> | "  # noqa: RUF027  # loguru format string
+            "<level>{level: <8}</level> | "  # noqa: RUF027 - loguru format string
             "<cyan>{function}</cyan> - "
             "<level>{message}</level>"
         )
     else:  # "full"
         format_str = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-            "<level>{level: <8}</level> | "  # noqa: RUF027  # loguru format string
+            "<level>{level: <8}</level> | "  # noqa: RUF027 - loguru format string
             "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
             "<level>{message}</level>"
         )
@@ -170,7 +187,7 @@ def enable_logging(
 
 
 def _is_dfkit_record(record: Record) -> bool:
-    """Filter log records to only include dfkit module records.
+    """Filter to pass all dfkit module records regardless of level.
 
     Used by enable_logging when tool_calls_only=False to pass all dfkit records
     at or above the configured level.
@@ -186,18 +203,22 @@ def _is_dfkit_record(record: Record) -> bool:
 
 
 def _is_dfkit_tool_call_record(record: Record) -> bool:
-    """Filter log records to only include dfkit TOOL_CALL level records.
+    """Filter to pass dfkit records at TOOL_CALL level and above.
 
-    Used by enable_logging when tool_calls_only=True (the default) to pass only
-    TOOL_CALL-level records from dfkit.
+    Used by enable_logging when tool_calls_only=True (the default) to pass
+    TOOL_CALL-level records and any WARNING/ERROR/CRITICAL records from dfkit.
 
     Args:
         record (Record): The loguru Record object to filter.
 
     Returns:
-        bool: True if the record is from dfkit and at exactly TOOL_CALL level,
-            False otherwise.
+        bool: True if the record is from dfkit and at TOOL_CALL level or above
+            (WARNING=30, ERROR=40, CRITICAL=50), False otherwise.
     """
     name = record["name"]
     level_no = record["level"].no
-    return name is not None and name.startswith(PACKAGE_NAME) and level_no == TOOL_CALL_LEVEL_NUMBER
+    return (
+        name is not None
+        and name.startswith(PACKAGE_NAME)
+        and (level_no == TOOL_CALL_LEVEL_NUMBER or level_no >= WARNING_LEVEL_NUMBER)
+    )
