@@ -624,7 +624,7 @@ class TestToolCallLevelRegistration:
 
         Given: dfkit.logging has been imported
         When: The TOOL_CALL level is queried from the loguru logger
-        Then: The level exists with the correct numeric value (15)
+        Then: The level exists with the correct numeric value (25)
         """
         # Act - query the registered level
         level = logger.level(TOOL_CALL_LEVEL)
@@ -809,13 +809,14 @@ class TestEnableLoggingLifecycle:
     def test_concurrent_handle_independence(self) -> None:
         """Verify disabling one handle preserves the other handle's logging capability.
 
-        Given: Two handles from enable_logging(tool_calls_only=False)
+        Given: Two handles from enable_logging(level="DEBUG")
         When: Disable handle1, perform toolkit operation that produces logs, disable handle2
         Then: Log records are still captured after handle1 is disabled, proving handle2 is active
         """
-        # Arrange - create two independent handles
-        handle1 = enable_logging(tool_calls_only=False)
-        handle2 = enable_logging(tool_calls_only=False)
+        # Arrange - create two independent handles with DEBUG level so all dfkit records including
+        # INFO registration logs are captured
+        handle1 = enable_logging(level="DEBUG")
+        handle2 = enable_logging(level="DEBUG")
 
         # Arrange - create log sink to capture records
         captured_records: list[dict[str, Any]] = []
@@ -921,9 +922,10 @@ class TestEnableLoggingLifecycle:
         When: Handle1 is disabled but handle2 is still active
         Then: dfkit log records are still captured; only after handle2 is disabled do they stop
         """
-        # Arrange - create two independent handles
-        handle1 = enable_logging(tool_calls_only=False)
-        handle2 = enable_logging(tool_calls_only=False)
+        # Arrange - create two independent handles with DEBUG level so all dfkit records including
+        # INFO registration logs are captured
+        handle1 = enable_logging(level="DEBUG")
+        handle2 = enable_logging(level="DEBUG")
 
         # Arrange - sink to capture records
         records_after_disable1: list[dict] = []
@@ -1063,17 +1065,18 @@ class TestEnableLoggingLifecycle:
 
 
 class TestEnableLoggingFiltering:
-    """Tests for enable_logging tool_calls_only filtering behavior."""
+    """Tests for enable_logging default filtering behavior."""
 
-    def test_enable_logging_tool_calls_only_handler_filters_correctly(self) -> None:
-        """Verify enable_logging(tool_calls_only=True) handler actually filters output.
+    def test_enable_logging_default_handler_captures_tool_call_and_above(self) -> None:
+        """Verify enable_logging() handler captures TOOL_CALL and above, excluding INFO and DEBUG.
 
-        Given: enable_logging(tool_calls_only=True) creates a stderr handler
-        When: Operations produce INFO, DEBUG, TOOL_CALL, and WARNING logs
-        Then: Only TOOL_CALL and WARNING+ records reach stderr via enable_logging's handler
+        Given: enable_logging() creates a stderr handler at the default TOOL_CALL level (25)
+        When: Operations produce DEBUG, INFO, TOOL_CALL, and WARNING logs
+        Then: TOOL_CALL and WARNING records reach stderr; INFO and DEBUG are excluded because
+              their numeric values (20 and 10) fall below the TOOL_CALL threshold (25)
 
         This test captures stderr output from the actual handler created by enable_logging
-        to verify the wiring is correct, not just that the filter function works in isolation.
+        to verify the default level wiring is correct.
         """
         # Arrange - capture stderr to intercept enable_logging handler output
         captured_stderr = io.StringIO()
@@ -1082,94 +1085,40 @@ class TestEnableLoggingFiltering:
         try:
             sys.stderr = captured_stderr
 
-            # Arrange - enable_logging with tool_calls_only=True
-            handle = enable_logging(tool_calls_only=True)
+            # Arrange - enable_logging with default level (TOOL_CALL = 25)
+            handle = enable_logging()
 
-            # Act - perform operations that generate INFO, DEBUG, TOOL_CALL, WARNING
-            toolkit = DataFrameToolkit()
-            df = pl.DataFrame({
-                "order_id": [1001, 1002, 1003],
-                "total": [299.99, 49.50, 1250.00],
-            })
-            toolkit.register_dataframe("test_df", df)  # INFO
-            toolkit.get_dataframe_id("test_df")  # TOOL_CALL entry + DEBUG result
-            toolkit.get_dataframe_id("nonexistent")  # TOOL_CALL entry + WARNING error
-
-            # Get captured output
-            stderr_output = captured_stderr.getvalue()
-
-            # Assert - stderr should contain TOOL_CALL entries
-            with check:
-                assert "TOOL_CALL" in stderr_output, "Should have TOOL_CALL level logs in stderr"
-
-            # Assert - stderr should contain WARNING level logs
-            with check:
-                assert "WARNING" in stderr_output, "Should have WARNING level logs in stderr"
-
-            # Assert - stderr should NOT contain INFO logs (from register_dataframe)
-            # INFO logs mention "DataFrame registered" - they should be filtered out
-            with check:
-                assert "INFO" not in stderr_output, "Should NOT have INFO level logs in stderr (filtered)"
-
-            # Assert - stderr should NOT contain DEBUG logs (from tool call result)
-            with check:
-                assert "DEBUG" not in stderr_output, "Should NOT have DEBUG level logs in stderr (filtered)"
-
-            # Cleanup
-            handle.disable()
-
-        finally:
-            sys.stderr = original_stderr
-
-    def test_enable_logging_tool_calls_only_false_handler_captures_all(self) -> None:
-        """Verify enable_logging(tool_calls_only=False) handler captures all level records.
-
-        Given: enable_logging(tool_calls_only=False) creates a stderr handler
-        When: Operations produce INFO, TOOL_CALL, and WARNING logs
-        Then: INFO, TOOL_CALL, and WARNING records all reach stderr (DEBUG excluded by level threshold)
-
-        This test captures stderr output from the actual handler created by enable_logging
-        to verify the wiring is correct.
-        """
-        # Arrange - capture stderr to intercept enable_logging handler output
-        captured_stderr = io.StringIO()
-        original_stderr = sys.stderr
-
-        try:
-            sys.stderr = captured_stderr
-
-            # Arrange - enable_logging with tool_calls_only=False
-            handle = enable_logging(tool_calls_only=False)  # level defaults to TOOL_CALL (15)
-
-            # Act - perform operations
+            # Act - perform operations that generate DEBUG, INFO, TOOL_CALL, and WARNING logs
             toolkit = DataFrameToolkit()
             df = pl.DataFrame({
                 "product_id": ["P-001", "P-002"],
                 "price": [19.99, 39.99],
             })
-            toolkit.register_dataframe("test_df", df)  # INFO (level 20)
-            toolkit.get_dataframe_id("test_df")  # TOOL_CALL (15) + DEBUG (10)
-            toolkit.get_dataframe_id("nonexistent")  # TOOL_CALL (15) + WARNING (30)
+            toolkit.register_dataframe("test_df", df)  # INFO (level 20) - below TOOL_CALL threshold
+            toolkit.get_dataframe_id("test_df")  # TOOL_CALL (25) entry + DEBUG (10) result
+            toolkit.get_dataframe_id("nonexistent")  # TOOL_CALL (25) entry + WARNING (30) error
 
             # Get captured output
             stderr_output = captured_stderr.getvalue()
 
-            # Assert - stderr should contain INFO level logs
-            with check:
-                assert "INFO" in stderr_output, "Should have INFO level logs in stderr (above TOOL_CALL threshold)"
-
-            # Assert - stderr should contain TOOL_CALL level logs
+            # Assert - stderr should contain TOOL_CALL entries (level 25 = at threshold)
             with check:
                 assert "TOOL_CALL" in stderr_output, "Should have TOOL_CALL level logs in stderr"
 
-            # Assert - stderr should contain WARNING level logs
+            # Assert - stderr should contain WARNING level logs (level 30 > threshold)
             with check:
                 assert "WARNING" in stderr_output, "Should have WARNING level logs in stderr"
 
-            # Assert - stderr should NOT contain DEBUG logs (below TOOL_CALL level 15)
+            # Assert - stderr should NOT contain INFO logs (level 20 < TOOL_CALL threshold 25)
+            with check:
+                assert "INFO" not in stderr_output, (
+                    "Should NOT have INFO level logs in stderr (below TOOL_CALL threshold)"
+                )
+
+            # Assert - stderr should NOT contain DEBUG logs (level 10 < TOOL_CALL threshold 25)
             with check:
                 assert "DEBUG" not in stderr_output, (
-                    "Should NOT have DEBUG level logs in stderr (below TOOL_CALL level threshold)"
+                    "Should NOT have DEBUG level logs in stderr (below TOOL_CALL threshold)"
                 )
 
             # Cleanup

@@ -8,7 +8,6 @@ from dfkit.models import ToolCallError
 # Enable logging at TOOL_CALL level (and above) with full log format for better visibility of log details
 with enable_logging(
     level="TOOL_CALL",
-    tool_calls_only=False,
     log_format="full",
 ):
     # Create toolkit and register some DataFrames

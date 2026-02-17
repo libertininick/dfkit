@@ -23,10 +23,9 @@ PACKAGE_NAME: Final[str] = __name__.split(".")[0]
 with contextlib.suppress(ValueError):
     logger.remove(0)
 
-# Register custom TOOL_CALL level (between DEBUG=10 and INFO=20)
+# Register custom TOOL_CALL level (between INFO=20 and WARNING=30)
 TOOL_CALL_LEVEL: Final[str] = "TOOL_CALL"
-TOOL_CALL_LEVEL_NUMBER: Final[int] = 15  # Between DEBUG (10) and INFO (20)
-WARNING_LEVEL_NUMBER: Final[int] = 30
+TOOL_CALL_LEVEL_NUMBER: Final[int] = 25  # Between INFO (20) and WARNING (30)
 try:
     existing_level = logger.level(TOOL_CALL_LEVEL)
 except ValueError:
@@ -122,7 +121,6 @@ class LoggingHandle:
 def enable_logging(
     *,
     level: LogLevel = TOOL_CALL_LEVEL,
-    tool_calls_only: bool = True,
     log_format: LogFormat = "short",
 ) -> LoggingHandle:
     """Enable dfkit logging with loguru's default format.
@@ -138,10 +136,6 @@ def enable_logging(
             "TRACE" when diagnosing unexpected behavior inside dfkit internals.
             Valid values: "TRACE", "DEBUG", "TOOL_CALL", "INFO", "WARNING",
             "ERROR", "CRITICAL".
-        tool_calls_only (bool): When True (default), filters output to only
-            TOOL_CALL-level records so you see a clean stream of toolkit method
-            invocations. Set to False when you need the full picture—warnings,
-            errors, and debug messages—to troubleshoot issues.
         log_format (LogFormat): Controls how much source location context
             appears in each log line. Use "short" (default) for everyday
             monitoring where just the function name is enough. Switch to "full"
@@ -156,9 +150,6 @@ def enable_logging(
         ...     logger.info("Logging is enabled")
     """
     logger.enable(PACKAGE_NAME)
-
-    # Choose filter based on tool_calls_only parameter
-    filter_func = _is_dfkit_tool_call_record if tool_calls_only else _is_dfkit_record
 
     # Choose format based on log_format parameter
     if log_format == "short":
@@ -179,7 +170,7 @@ def enable_logging(
     handler_id = logger.add(
         sys.stderr,
         level=level,
-        filter=filter_func,
+        filter=_is_dfkit_record,
         format=format_str,
     )
 
@@ -187,10 +178,11 @@ def enable_logging(
 
 
 def _is_dfkit_record(record: Record) -> bool:
-    """Filter to pass all dfkit module records regardless of level.
+    """Filter to pass all dfkit module records.
 
-    Used by enable_logging when tool_calls_only=False to pass all dfkit records
-    at or above the configured level.
+    Default filter for enable_logging; passes all dfkit records at or above
+    the configured level. Loguru's built-in level filtering handles numeric
+    thresholds.
 
     Args:
         record (Record): The loguru Record object to filter.
@@ -200,25 +192,3 @@ def _is_dfkit_record(record: Record) -> bool:
     """
     name = record["name"]
     return name is not None and name.startswith(PACKAGE_NAME)
-
-
-def _is_dfkit_tool_call_record(record: Record) -> bool:
-    """Filter to pass dfkit records at TOOL_CALL level and above.
-
-    Used by enable_logging when tool_calls_only=True (the default) to pass
-    TOOL_CALL-level records and any WARNING/ERROR/CRITICAL records from dfkit.
-
-    Args:
-        record (Record): The loguru Record object to filter.
-
-    Returns:
-        bool: True if the record is from dfkit and at TOOL_CALL level or above
-            (WARNING=30, ERROR=40, CRITICAL=50), False otherwise.
-    """
-    name = record["name"]
-    level_no = record["level"].no
-    return (
-        name is not None
-        and name.startswith(PACKAGE_NAME)
-        and (level_no == TOOL_CALL_LEVEL_NUMBER or level_no >= WARNING_LEVEL_NUMBER)
-    )
