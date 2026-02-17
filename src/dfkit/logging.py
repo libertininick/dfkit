@@ -89,6 +89,10 @@ class LoggingHandle:
     Stores the handler ID from logger.add() and provides cleanup via disable()
     or automatic cleanup through context manager protocol.
 
+    Attributes:
+        handler_id (int | None): The loguru handler ID, or ``None`` after
+            disable() has been called.
+
     Examples:
         >>> with enable_logging():  # doctest: +SKIP
         ...     logger.info("Temporary logging enabled")
@@ -100,6 +104,7 @@ class LoggingHandle:
 
     _active_ids: ClassVar[set[int]] = set()
     _lock: ClassVar[threading.Lock] = threading.Lock()
+    handler_id: int | None
 
     def __init__(self, handler_id: int) -> None:
         """Initialize the logging handle.
@@ -107,7 +112,7 @@ class LoggingHandle:
         Args:
             handler_id (int): The loguru handler ID from logger.add().
         """
-        self.handler_id: int | None = handler_id
+        self.handler_id = handler_id
         with LoggingHandle._lock:
             LoggingHandle._active_ids.add(handler_id)
 
@@ -155,6 +160,11 @@ class LoggingHandle:
     @classmethod
     def get_active_handle_count(cls) -> int:
         """Return the number of currently active logging handles.
+
+        Acquires the internal lock to read a consistent snapshot of the active
+        handle set. Use this for observability and testing rather than
+        control-flow decisions, since the count may change immediately after
+        the lock is released.
 
         Returns:
             int: Count of active handles that have not been disabled.
