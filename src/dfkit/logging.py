@@ -24,6 +24,8 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal
 from loguru import logger
 
 if TYPE_CHECKING:
+    from types import TracebackType
+
     from loguru import Record
 
 PACKAGE_NAME: Final[str] = __name__.split(".")[0]
@@ -135,11 +137,18 @@ class LoggingHandle:
         """
         return self
 
-    def __exit__(self, *args: object) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Exit context manager and disable logging.
 
         Args:
-            *args (object): Exception information (type, value, traceback).
+            exc_type (type[BaseException] | None): The exception type, if raised.
+            exc_val (BaseException | None): The exception instance, if raised.
+            exc_tb (TracebackType | None): The traceback, if raised.
         """
         self.disable()
 
@@ -197,7 +206,6 @@ def enable_logging(
     """
     logger.enable(PACKAGE_NAME)
 
-    # Choose format based on log_format parameter
     if log_format == "short":
         format_str = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
