@@ -2,6 +2,15 @@
 
 This module provides a custom TOOL_CALL log level and a context manager for
 enabling/disabling dfkit logging with loguru.
+
+Note:
+    Importing this module removes loguru's default stderr handler (ID 0) to
+    prevent duplicate output when ``enable_logging()`` adds its own handler.
+    If your application configures loguru handlers *before* importing dfkit,
+    handler 0 may no longer be the default — in that case the removal is a
+    no-op (the ``ValueError`` is suppressed). To be safe, configure loguru
+    handlers *after* importing dfkit, or re-add a stderr handler explicitly
+    if needed.
 """
 
 from __future__ import annotations
@@ -18,8 +27,11 @@ if TYPE_CHECKING:
 
 PACKAGE_NAME: Final[str] = __name__.split(".")[0]
 
-# Remove loguru's default stderr handler to prevent duplicate output
-# Only removes handler 0 (the default); other user-added handlers remain intact
+# Remove loguru's default stderr handler to prevent duplicate output when
+# enable_logging() adds its own filtered handler. Handler ID 0 is the default
+# stderr handler that loguru creates at import time. If another library has
+# already removed or replaced handler 0 before this module is imported, the
+# ValueError is suppressed and no handler is removed. See module docstring.
 with contextlib.suppress(ValueError):
     logger.remove(0)
 
@@ -95,7 +107,13 @@ class LoggingHandle:
         LoggingHandle._active_ids.add(handler_id)
 
     def disable(self) -> None:
-        """Remove the handler associated with this logging handle."""
+        """Remove the handler associated with this logging handle.
+
+        When this is the last active handle, ``logger.disable("dfkit")`` is
+        called to suppress dfkit log messages. This will also suppress messages
+        routed to any handler added independently via ``logger.enable("dfkit")``.
+        See ``enable_logging`` for details.
+        """
         if self.handler_id is None:
             return
         LoggingHandle._active_ids.discard(self.handler_id)
@@ -157,6 +175,16 @@ def enable_logging(
 
     Returns:
         LoggingHandle: Independent handle for managing the logging handler.
+
+    Note:
+        This function calls ``logger.enable("dfkit")`` so that log messages
+        reach the newly added handler. When the last active ``LoggingHandle``
+        is disabled, ``logger.disable("dfkit")`` is called automatically. If
+        your application independently calls ``logger.enable("dfkit")`` (e.g.
+        to route dfkit messages to your own handler), be aware that disabling
+        the last handle will re-disable the ``"dfkit"`` logger, suppressing
+        your handler as well. In that case, call ``logger.enable("dfkit")``
+        again after the handle is disabled.
 
     Examples:
         >>> with enable_logging():  # doctest: +SKIP
