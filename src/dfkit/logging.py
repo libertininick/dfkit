@@ -119,9 +119,9 @@ class LoggingHandle:
         routed to any handler added independently via ``logger.enable("dfkit")``.
         See ``enable_logging`` for details.
         """
-        if self.handler_id is None:
-            return
         with LoggingHandle._lock:
+            if self.handler_id is None:
+                return
             LoggingHandle._active_ids.discard(self.handler_id)
             with contextlib.suppress(ValueError):
                 logger.remove(self.handler_id)
