@@ -13,6 +13,7 @@ import sys
 import warnings
 from collections.abc import Generator
 from typing import Any, NamedTuple
+from unittest import mock
 
 import polars as pl
 import pytest
@@ -24,6 +25,7 @@ from dfkit.logging import (
     TOOL_CALL_LEVEL,
     TOOL_CALL_LEVEL_NUMBER,
     LoggingHandle,
+    _register_tool_call_level,
     enable_logging,
 )
 from dfkit.toolkit import DataFrameToolkit
@@ -639,20 +641,25 @@ class TestToolCallLevelRegistration:
         """Verify a numeric mismatch on TOOL_CALL registration issues a warning, not an exception.
 
         Given: The TOOL_CALL level already exists with a numeric value different from expected
-        When: The conflict-detection code path runs
+        When: _register_tool_call_level() runs and detects the conflict
         Then: A UserWarning is issued with the conflict details; no ValueError is raised
         """
-        # Arrange - construct the conflict message matching the format used in logging.py
+        # Arrange - build a fake level object whose .no is wrong so the conflict branch fires
         conflicting_number = TOOL_CALL_LEVEL_NUMBER + 1
-        expected_msg = (
-            f"TOOL_CALL level already registered with numeric value {conflicting_number},"
-            f" expected {TOOL_CALL_LEVEL_NUMBER}"
-        )
+        fake_level = mock.MagicMock(spec=["no"])
+        fake_level.no = conflicting_number
 
-        # Act - run the conflict-detection code path (warn instead of raise)
-        with warnings.catch_warnings(record=True) as caught:
+        # Patch logger.level so the 1-arg lookup returns our fake level (simulating the level
+        # already being registered with a different numeric value).  We target
+        # dfkit.logging.logger.level because that is the loguru external boundary used by the
+        # production helper.
+        with (
+            mock.patch("dfkit.logging.logger.level", return_value=fake_level),
+            warnings.catch_warnings(record=True) as caught,
+        ):
             warnings.simplefilter("always")
-            warnings.warn(expected_msg, stacklevel=2)
+            # Act - invoke the real conflict-detection helper with warnings capture
+            _register_tool_call_level()
 
         # Assert - a UserWarning was issued, not a ValueError
         with check:

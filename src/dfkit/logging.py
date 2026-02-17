@@ -26,19 +26,32 @@ with contextlib.suppress(ValueError):
 # Register custom TOOL_CALL level (between INFO=20 and WARNING=30)
 TOOL_CALL_LEVEL: Final[str] = "TOOL_CALL"
 TOOL_CALL_LEVEL_NUMBER: Final[int] = 25  # Between INFO (20) and WARNING (30)
-try:
-    existing_level = logger.level(TOOL_CALL_LEVEL)
-except ValueError:
-    # Level does not exist yet; register it
-    logger.level(TOOL_CALL_LEVEL, no=TOOL_CALL_LEVEL_NUMBER, icon="🔧")
-else:
-    # Level exists; warn if numeric value differs (loguru does not allow changing no)
-    if existing_level.no != TOOL_CALL_LEVEL_NUMBER:
-        msg = (
-            f"TOOL_CALL level already registered with numeric value {existing_level.no},"
-            f" expected {TOOL_CALL_LEVEL_NUMBER}"
-        )
-        warnings.warn(msg, stacklevel=2)
+
+
+def _register_tool_call_level() -> None:
+    """Register the TOOL_CALL custom log level with loguru.
+
+    Attempts to look up the TOOL_CALL level. If it does not exist, registers it
+    with the configured numeric value. If it already exists with a different
+    numeric value, emits a UserWarning because loguru does not permit changing
+    the numeric value of an existing level.
+    """
+    try:
+        existing_level = logger.level(TOOL_CALL_LEVEL)
+    except ValueError:
+        # Level does not exist yet; register it
+        logger.level(TOOL_CALL_LEVEL, no=TOOL_CALL_LEVEL_NUMBER, icon="🔧")
+    else:
+        # Level exists; warn if numeric value differs (loguru does not allow changing no)
+        if existing_level.no != TOOL_CALL_LEVEL_NUMBER:
+            msg = (
+                f"TOOL_CALL level already registered with numeric value {existing_level.no},"
+                f" expected {TOOL_CALL_LEVEL_NUMBER}"
+            )
+            warnings.warn(msg, stacklevel=2)
+
+
+_register_tool_call_level()
 
 # Define valid log levels for enable_logging
 type LogLevel = Literal[
