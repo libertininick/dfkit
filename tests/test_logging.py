@@ -43,6 +43,54 @@ class LogSink(NamedTuple):
     handler_id: int
 
 
+@contextlib.contextmanager
+def capturing_sink(*, enable_dfkit: bool = True) -> Generator[list[dict[str, Any]]]:
+    """Context manager that adds a loguru sink and yields the captured records list.
+
+    Registers a new loguru handler that appends each raw record dict to a list,
+    optionally enables the dfkit logger for the duration of the block, then removes
+    the handler (and disables the dfkit logger when ``enable_dfkit=True``) on exit.
+
+    Use this in tests that need a raw sink independent of the ``log_sink`` fixture.
+    Pass ``enable_dfkit=False`` when testing state *after* a ``LoggingHandle`` has
+    already been disabled — in that case the sink observes whether dfkit records
+    flow without this helper re-enabling the logger.
+
+    Args:
+        enable_dfkit (bool): When True (default), calls ``logger.enable(PACKAGE_NAME)``
+            before yielding and ``logger.disable(PACKAGE_NAME)`` on exit. Set to False
+            when the test must observe the logger state left by the code under test.
+
+    Yields:
+        Generator[list[dict[str, Any]]]: Mutable list that accumulates record dicts
+            while the context is active. Records are appended in arrival order.
+
+    Examples:
+        >>> with capturing_sink() as captured_records:  # doctest: +SKIP
+        ...     toolkit.register_dataframe("sales", df)
+        ...     assert len(captured_records) > 0
+    """
+    captured_records: list[dict[str, Any]] = []
+
+    def _sink(message: Any) -> None:
+        """Append the raw record dict to the accumulated list.
+
+        Args:
+            message (Any): Loguru message object; its ``record`` attribute holds the raw dict.
+        """
+        captured_records.append(message.record)
+
+    handler_id = logger.add(_sink)
+    if enable_dfkit:
+        logger.enable(PACKAGE_NAME)
+    try:
+        yield captured_records
+    finally:
+        if enable_dfkit:
+            logger.disable(PACKAGE_NAME)
+        logger.remove(handler_id)
+
+
 @pytest.fixture(autouse=True)
 def restore_active_ids() -> Generator[None]:
     """Save and restore LoggingHandle._active_ids around each test.
@@ -66,7 +114,10 @@ def restore_active_ids() -> Generator[None]:
     for handler_id in added_ids:
         with contextlib.suppress(ValueError):
             logger.remove(handler_id)
-    LoggingHandle._active_ids = saved_ids
+    # Mutate the existing set in-place to preserve object identity (ClassVar
+    # is shared; reassigning it would break other references to the same set).
+    LoggingHandle._active_ids.clear()
+    LoggingHandle._active_ids.update(saved_ids)
 
 
 @pytest.fixture
@@ -167,6 +218,14 @@ def test_logging_enabled_produces_output(log_sink: LogSink) -> None:
     info_records = [r for r in log_sink.records if r["level"].name == "INFO"]
     with check:
         assert len(info_records) > 0, "Should have INFO log records"
+
+    # Assert - at least one record references the registered DataFrame name
+    name_referenced = any(
+        "sensor_readings" in str(r["message"]) or r.get("extra", {}).get("name") == "sensor_readings"
+        for r in log_sink.records
+    )
+    with check:
+        assert name_referenced, "At least one record should reference the registered DataFrame name 'sensor_readings'"
 
 
 class TestToolCallLogging:
@@ -277,27 +336,27 @@ class TestToolCallLogging:
             assert len(creation_records) > 0, "Should have INFO log for DataFrame created via SQL"
 
     def test_tool_call_level_captures_entries_not_debug(self, log_sink: LogSink) -> None:
-        """Verify TOOL_CALL level captures tool call entries but not DEBUG records.
+        """Verify TOOL_CALL level is distinct from DEBUG and that filtering works correctly.
 
         Given: Logging enabled, log sink capturing all records
         When: Perform tool calls that generate both TOOL_CALL entry and DEBUG result records
-        Then: TOOL_CALL entries are captured, DEBUG results are also captured (filter in assertions)
-
-        This validates the core use case: filtering for tool call entries only.
+        Then: TOOL_CALL and DEBUG records are at different numeric levels; filtering by level
+              name correctly separates entry records (TOOL_CALL) from result records (DEBUG)
 
         Args:
             log_sink (LogSink): Fixture providing log sink for capturing records.
         """
-        # Arrange
+        # Arrange - use different data shape from test_tool_call_entry_exit_logging to vary coverage
         toolkit = DataFrameToolkit()
         df = pl.DataFrame({
             "category": ["Electronics", "Furniture", "Clothing"],
             "sales": [15000, 8500, 12300],
+            "in_stock": [True, False, True],
         })
-        toolkit.register_dataframe("sales", df)
+        toolkit.register_dataframe("inventory", df)
 
         # Act - perform tool call that generates TOOL_CALL entry + DEBUG result
-        toolkit.get_dataframe_id("sales")
+        toolkit.get_dataframe_id("inventory")
 
         # Assert - TOOL_CALL entry is captured
         tool_call_records = [r for r in log_sink.records if r["level"].name == "TOOL_CALL"]
@@ -308,11 +367,27 @@ class TestToolCallLogging:
             with check:
                 assert "get_dataframe_id" in str(entry_records[0]["message"]), "Entry should mention function name"
 
-        # Assert - DEBUG result is also present (different level)
+        # Assert - DEBUG result records are at a lower numeric level than TOOL_CALL records
         debug_records = [r for r in log_sink.records if r["level"].name == "DEBUG"]
         result_records = [r for r in debug_records if "Tool call result:" in r["message"]]
         with check:
             assert len(result_records) > 0, "DEBUG result records should also be captured by sink"
+
+        # Assert - level filtering correctly separates the two sets: no entry records appear in
+        # debug_records and no result records appear in tool_call_records
+        tool_call_level_nos = {r["level"].no for r in tool_call_records}
+        debug_level_nos = {r["level"].no for r in debug_records}
+        with check:
+            assert tool_call_level_nos.isdisjoint(debug_level_nos), (
+                "TOOL_CALL and DEBUG records must have different numeric level values"
+            )
+
+        # Assert - filtering by TOOL_CALL excludes DEBUG result records (key filtering property)
+        debug_msgs_in_tool_call = [r for r in tool_call_records if "Tool call result:" in r["message"]]
+        with check:
+            assert len(debug_msgs_in_tool_call) == 0, (
+                "DEBUG 'Tool call result:' records should NOT appear when filtering by TOOL_CALL level"
+            )
 
 
 class TestDataFrameRegistrationLogging:
@@ -544,23 +619,36 @@ class TestViewAsMarkdownTableLogging:
 class TestListDataFramesLogging:
     """Tests for list_dataframes logging."""
 
-    def test_list_dataframes_logging(self, log_sink: LogSink) -> None:
-        """Verify list_dataframes logs entry at TOOL_CALL and result at DEBUG.
+    @pytest.mark.parametrize(
+        ("dataframe_count", "expected_names"),
+        [
+            (0, []),
+            (2, ["sales", "products"]),
+        ],
+        ids=["empty-registry", "two-dataframes"],
+    )
+    def test_list_dataframes_logs_entry_and_result(
+        self, log_sink: LogSink, dataframe_count: int, expected_names: list[str]
+    ) -> None:
+        """Verify list_dataframes logs TOOL_CALL entry and DEBUG result for any registry size.
 
-        Given: Logging enabled, toolkit with 2 registered DataFrames
-        When: Call list_dataframes()
-        Then: TOOL_CALL entry record + DEBUG result record
+        The DEBUG result record's extra fields must reflect the actual count and
+        names of registered DataFrames, differentiating the empty and non-empty cases.
 
         Args:
             log_sink (LogSink): Fixture providing log sink for capturing records.
+            dataframe_count (int): Number of DataFrames to register before calling list_dataframes.
+            expected_names (list[str]): DataFrame names that should appear in the DEBUG result extra.
         """
-        # Arrange
+        # Arrange - register the requested number of DataFrames
         toolkit = DataFrameToolkit()
-        df1 = pl.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4], "e": [5]})
-        # Use booleans to add data type variety
-        df2 = pl.DataFrame({"product": ["A", "B"], "price": [10, 20], "active": [True, False]})
-        toolkit.register_dataframe("sales", df1)
-        toolkit.register_dataframe("products", df2)
+        if dataframe_count >= 1:
+            df1 = pl.DataFrame({"a": [1], "b": [2], "c": [3], "d": [4], "e": [5]})
+            toolkit.register_dataframe("sales", df1)
+        if dataframe_count >= 2:
+            # Use booleans to add data type variety
+            df2 = pl.DataFrame({"product": ["A", "B"], "price": [10, 20], "active": [True, False]})
+            toolkit.register_dataframe("products", df2)
 
         # Act
         toolkit.list_dataframes()
@@ -573,7 +661,7 @@ class TestListDataFramesLogging:
         with check:
             assert len(entry_records) > 0, "Should have TOOL_CALL entry record"
 
-        # Assert - DEBUG result
+        # Assert - DEBUG result record is present
         debug_records = [r for r in log_sink.records if r["level"].name == "DEBUG"]
         result_records = [
             r
@@ -583,39 +671,18 @@ class TestListDataFramesLogging:
         with check:
             assert len(result_records) > 0, "Should have DEBUG result record"
 
-    def test_list_dataframes_empty_registry_logging(self, log_sink: LogSink) -> None:
-        """Verify list_dataframes logs correctly with empty registry.
-
-        Given: Logging enabled, toolkit with 0 registered DataFrames
-        When: Call list_dataframes()
-        Then: TOOL_CALL entry record + DEBUG result record
-
-        Args:
-            log_sink (LogSink): Fixture providing log sink for capturing records.
-        """
-        # Arrange
-        toolkit = DataFrameToolkit()
-
-        # Act
-        toolkit.list_dataframes()
-
-        # Assert - TOOL_CALL entry
-        tool_call_records = [r for r in log_sink.records if r["level"].name == "TOOL_CALL"]
-        entry_records = [
-            r for r in tool_call_records if "list_dataframes" in str(r["message"]) and "Tool call:" in str(r["message"])
-        ]
-        with check:
-            assert len(entry_records) > 0, "Should have TOOL_CALL entry record"
-
-        # Assert - DEBUG result
-        debug_records = [r for r in log_sink.records if r["level"].name == "DEBUG"]
-        result_records = [
-            r
-            for r in debug_records
-            if "list_dataframes" in str(r["message"]) and "Tool call result:" in str(r["message"])
-        ]
-        with check:
-            assert len(result_records) > 0, "Should have DEBUG result record"
+        # Assert - per-case: DEBUG result extra fields reflect the actual registry state
+        if result_records:
+            extra = result_records[0].get("extra", {})
+            with check:
+                assert extra.get("count") == dataframe_count, (
+                    f"Result extra 'count' should be {dataframe_count}, got {extra.get('count')}"
+                )
+            actual_names = extra.get("names", [])
+            with check:
+                assert sorted(actual_names) == sorted(expected_names), (
+                    f"Result extra 'names' should be {expected_names}, got {actual_names}"
+                )
 
 
 class TestToolCallLevelRegistration:
@@ -825,21 +892,7 @@ class TestEnableLoggingLifecycle:
         handle1 = enable_logging(level="DEBUG")
         handle2 = enable_logging(level="DEBUG")
 
-        # Arrange - create log sink to capture records
-        captured_records: list[dict[str, Any]] = []
-
-        def sink(message: Any) -> None:
-            """Capture record dict from each log message.
-
-            Args:
-                message (Any): Log message with record attribute.
-            """
-            captured_records.append(message.record)
-
-        sink_handler_id = logger.add(sink)
-        logger.enable(PACKAGE_NAME)
-
-        try:
+        with capturing_sink() as captured_records:
             # Act - disable handle1 only
             handle1.disable()
 
@@ -861,11 +914,8 @@ class TestEnableLoggingLifecycle:
             with check:
                 assert len(register_records) > 0, "Should have captured registration log from handle2"
 
-        finally:
-            # Cleanup - disable handle2 and remove sink
-            handle2.disable()
-            logger.disable(PACKAGE_NAME)
-            logger.remove(sink_handler_id)
+        # Cleanup - disable handle2 after the sink context exits
+        handle2.disable()
 
     def test_disable_double_call_safe(self) -> None:
         """Verify calling disable() twice does not raise.
@@ -892,20 +942,8 @@ class TestEnableLoggingLifecycle:
         handle = enable_logging()
         handle.disable()
 
-        # Arrange - add a new sink after the handle is disabled
-        captured_records: list[dict[str, Any]] = []
-
-        def sink(message: Any) -> None:
-            """Capture record dict from each log message.
-
-            Args:
-                message (Any): Log message with record attribute.
-            """
-            captured_records.append(message.record)
-
-        sink_handler_id = logger.add(sink)
-
-        try:
+        # Arrange - add a new sink after the handle is disabled (do NOT re-enable dfkit logger)
+        with capturing_sink(enable_dfkit=False) as captured_records:
             # Act - perform toolkit operations that would log if enabled
             toolkit = DataFrameToolkit()
             df = pl.DataFrame({
@@ -919,8 +957,6 @@ class TestEnableLoggingLifecycle:
             dfkit_records = [r for r in captured_records if r["name"].startswith(PACKAGE_NAME)]
             with check:
                 assert len(dfkit_records) == 0, "No dfkit logs should be captured after last handle is disabled"
-        finally:
-            logger.remove(sink_handler_id)
 
     def test_concurrent_handles_keep_logger_enabled(self) -> None:
         """Verify disabling one handle while another is active does not disable the logger.
@@ -934,21 +970,7 @@ class TestEnableLoggingLifecycle:
         handle1 = enable_logging(level="DEBUG")
         handle2 = enable_logging(level="DEBUG")
 
-        # Arrange - sink to capture records
-        records_after_disable1: list[dict] = []
-
-        def sink(message: Any) -> None:
-            """Capture record dict from each log message.
-
-            Args:
-                message (Any): Log message with record attribute.
-            """
-            records_after_disable1.append(message.record)
-
-        sink_handler_id = logger.add(sink)
-        logger.enable(PACKAGE_NAME)
-
-        try:
+        with capturing_sink() as records_after_disable1:
             # Act - disable handle1 only, leaving handle2 active
             handle1.disable()
 
@@ -981,8 +1003,6 @@ class TestEnableLoggingLifecycle:
             dfkit_records_after = [r for r in records_after_disable1 if r["name"].startswith(PACKAGE_NAME)]
             with check:
                 assert len(dfkit_records_after) == 0, "dfkit logs should stop after all handles are disabled"
-        finally:
-            logger.remove(sink_handler_id)
 
     def test_active_ids_cleaned_on_disable(self) -> None:
         """Verify logging stops after all handles are disabled.
@@ -997,20 +1017,8 @@ class TestEnableLoggingLifecycle:
         handle1.disable()
         handle2.disable()
 
-        # Arrange - add a new sink after all handles are disabled
-        captured_records: list[dict[str, Any]] = []
-
-        def sink(message: Any) -> None:
-            """Capture record dict from each log message.
-
-            Args:
-                message (Any): Log message with record attribute.
-            """
-            captured_records.append(message.record)
-
-        sink_handler_id = logger.add(sink)
-
-        try:
+        # Arrange - add a new sink after all handles are disabled (do NOT re-enable dfkit logger)
+        with capturing_sink(enable_dfkit=False) as captured_records:
             # Act - perform toolkit operations that would log if dfkit were enabled
             toolkit = DataFrameToolkit()
             df = pl.DataFrame({
@@ -1025,8 +1033,6 @@ class TestEnableLoggingLifecycle:
             dfkit_records = [r for r in captured_records if r["name"].startswith(PACKAGE_NAME)]
             with check:
                 assert len(dfkit_records) == 0, "No dfkit logs should be captured after all handles are disabled"
-        finally:
-            logger.remove(sink_handler_id)
 
     def test_context_manager_re_disables_on_exit(self) -> None:
         """Verify the context manager triggers logger re-disable on exit.
@@ -1039,20 +1045,8 @@ class TestEnableLoggingLifecycle:
         with enable_logging():
             pass  # Block exits, handle.disable() is called automatically
 
-        # Arrange - add a new sink after the context manager exits
-        captured_records: list[dict[str, Any]] = []
-
-        def sink(message: Any) -> None:
-            """Capture record dict from each log message.
-
-            Args:
-                message (Any): Log message with record attribute.
-            """
-            captured_records.append(message.record)
-
-        sink_handler_id = logger.add(sink)
-
-        try:
+        # Arrange - add a new sink after the context manager exits (do NOT re-enable dfkit logger)
+        with capturing_sink(enable_dfkit=False) as captured_records:
             # Act - perform operations that would log if dfkit were still enabled
             toolkit = DataFrameToolkit()
             df = pl.DataFrame({
@@ -1067,8 +1061,6 @@ class TestEnableLoggingLifecycle:
             dfkit_records = [r for r in captured_records if r["name"].startswith(PACKAGE_NAME)]
             with check:
                 assert len(dfkit_records) == 0, "No dfkit logs should be captured after context manager exits"
-        finally:
-            logger.remove(sink_handler_id)
 
 
 class TestEnableLoggingFiltering:
@@ -1134,99 +1126,260 @@ class TestEnableLoggingFiltering:
         finally:
             sys.stderr = original_stderr
 
+    def test_enable_logging_debug_level_captures_all_levels(self) -> None:
+        """Verify enable_logging(level="DEBUG") passes DEBUG, INFO, TOOL_CALL, and WARNING records.
+
+        Given: enable_logging(level="DEBUG") creates a stderr handler at the DEBUG threshold (10)
+        When: Operations produce DEBUG, INFO, TOOL_CALL, and WARNING logs
+        Then: All four levels appear in stderr because DEBUG (10) is the lowest threshold
+        """
+        # Arrange - capture stderr to intercept enable_logging handler output
+        captured_stderr = io.StringIO()
+        original_stderr = sys.stderr
+
+        try:
+            sys.stderr = captured_stderr
+
+            # Arrange - enable_logging with DEBUG level (threshold = 10)
+            handle = enable_logging(level="DEBUG")
+
+            # Act - perform operations that generate all level types
+            toolkit = DataFrameToolkit()
+            df = pl.DataFrame({
+                "store_id": ["S-01", "S-02", "S-03"],
+                "revenue": [45000.0, 32000.0, 61000.0],
+            })
+            toolkit.register_dataframe("stores", df)  # INFO (level 20)
+            toolkit.get_dataframe_id("stores")  # TOOL_CALL (25) entry + DEBUG (10) result
+            toolkit.get_dataframe_id("nonexistent")  # TOOL_CALL (25) entry + WARNING (30) error
+
+            # Get captured output
+            stderr_output = captured_stderr.getvalue()
+
+            # Assert - DEBUG threshold means all four levels are included
+            with check:
+                assert "DEBUG" in stderr_output, "Should have DEBUG level logs (at threshold)"
+            with check:
+                assert "INFO" in stderr_output, "Should have INFO level logs (above DEBUG threshold)"
+            with check:
+                assert "TOOL_CALL" in stderr_output, "Should have TOOL_CALL level logs (above DEBUG threshold)"
+            with check:
+                assert "WARNING" in stderr_output, "Should have WARNING level logs (above DEBUG threshold)"
+
+            # Cleanup
+            handle.disable()
+
+        finally:
+            sys.stderr = original_stderr
+
+    def test_enable_logging_warning_level_excludes_tool_call_info_debug(self) -> None:
+        """Verify enable_logging(level="WARNING") only passes WARNING and above.
+
+        Given: enable_logging(level="WARNING") creates a stderr handler at threshold 30
+        When: Operations produce DEBUG, INFO, TOOL_CALL, and WARNING logs
+        Then: Only WARNING appears in stderr; DEBUG, INFO, TOOL_CALL are excluded because
+              their numeric values (10, 20, 25) fall below the WARNING threshold (30)
+        """
+        # Arrange - capture stderr to intercept enable_logging handler output
+        captured_stderr = io.StringIO()
+        original_stderr = sys.stderr
+
+        try:
+            sys.stderr = captured_stderr
+
+            # Arrange - enable_logging with WARNING level (threshold = 30)
+            handle = enable_logging(level="WARNING")
+
+            # Act - trigger all level types
+            toolkit = DataFrameToolkit()
+            df = pl.DataFrame({
+                "campaign_id": ["C-001", "C-002"],
+                "impressions": [120000, 85000],
+                "clicks": [3400, 2100],
+            })
+            toolkit.register_dataframe("campaigns", df)  # INFO (level 20) - below WARNING
+            toolkit.get_dataframe_id("campaigns")  # TOOL_CALL (25) entry + DEBUG (10) result - below WARNING
+            toolkit.get_dataframe_id("nonexistent")  # TOOL_CALL (25) entry + WARNING (30) error
+
+            # Get captured output
+            stderr_output = captured_stderr.getvalue()
+
+            # Assert - WARNING level (30) is at threshold and should appear
+            with check:
+                assert "WARNING" in stderr_output, "Should have WARNING level logs (at threshold)"
+
+            # Assert - TOOL_CALL (25), INFO (20), DEBUG (10) are all below WARNING threshold
+            with check:
+                assert "TOOL_CALL" not in stderr_output, (
+                    "Should NOT have TOOL_CALL logs (level 25 < WARNING threshold 30)"
+                )
+            with check:
+                assert "INFO" not in stderr_output, "Should NOT have INFO logs (level 20 < WARNING threshold 30)"
+            with check:
+                assert "DEBUG" not in stderr_output, "Should NOT have DEBUG logs (level 10 < WARNING threshold 30)"
+
+            # Cleanup
+            handle.disable()
+
+        finally:
+            sys.stderr = original_stderr
+
 
 class TestEnableLoggingFormatting:
     """Tests for enable_logging log_format parameter."""
 
     def test_log_format_short_shows_function_name_only(self, log_sink: LogSink) -> None:
-        """Verify log_format='short' (default) shows only function name in formatted output.
+        """Verify log_format='short' renders only the function name, not the module path.
 
-        Given: enable_logging(log_format="short") called
-        When: Perform toolkit operation that produces logs
-        Then: enable_logging successfully applies short format
-
-        This test verifies enable_logging(log_format="short") executes without error.
-        Detailed format validation is an implementation detail.
+        The short format string is ``{function} - {message}``. It must include the
+        function name (e.g. ``register_dataframe``) but must NOT include the full
+        module path (e.g. ``dfkit.toolkit``).
 
         Args:
             log_sink (LogSink): Fixture providing log sink for capturing records.
         """
-        # Arrange - enable_logging with short format
-        handle = enable_logging(log_format="short")
+        # Arrange - capture stderr to inspect the rendered format output
+        captured_stderr = io.StringIO()
+        original_stderr = sys.stderr
 
-        # Act - perform operation that produces logs
-        toolkit = DataFrameToolkit()
-        df = pl.DataFrame({
-            "region": ["North", "South", "East", "West"],
-            "sales_ytd": [125000.50, 98000.25, 145000.00, 112000.75],
-        })
-        toolkit.register_dataframe("test_df", df)
+        try:
+            sys.stderr = captured_stderr
 
-        # Assert - logs were produced
-        with check:
-            assert len(log_sink.records) > 0, "Should have captured log records"
+            # Arrange - enable_logging with short format
+            handle = enable_logging(log_format="short")
 
-        # Cleanup
-        handle.disable()
+            # Act - perform operation that produces TOOL_CALL-level logs
+            toolkit = DataFrameToolkit()
+            df = pl.DataFrame({
+                "region": ["North", "South", "East", "West"],
+                "sales_ytd": [125000.50, 98000.25, 145000.00, 112000.75],
+            })
+            toolkit.register_dataframe("regions", df)
+            toolkit.get_dataframe_id("regions")  # produces TOOL_CALL entry
+
+            stderr_output = captured_stderr.getvalue()
+
+            # Assert - raw records were captured (log_sink still receives them)
+            dfkit_records = [r for r in log_sink.records if r["name"].startswith(PACKAGE_NAME)]
+            with check:
+                assert len(dfkit_records) > 0, "Should have captured dfkit log records"
+
+            # Assert - rendered output contains the function name
+            with check:
+                assert "get_dataframe_id" in stderr_output, "Short format should include the calling function name"
+
+            # Assert - rendered output does NOT contain the module path (short format omits {name})
+            with check:
+                assert "dfkit.toolkit" not in stderr_output, (
+                    "Short format should NOT include the module path (dfkit.toolkit)"
+                )
+
+        finally:
+            sys.stderr = original_stderr
+            handle.disable()
 
     def test_log_format_full_shows_module_function_line(self, log_sink: LogSink) -> None:
-        """Verify log_format='full' shows module path, function name, and line number.
+        """Verify log_format='full' renders module path, function name, and line number.
 
-        Given: enable_logging(log_format="full") called
-        When: Perform toolkit operation that produces logs
-        Then: enable_logging successfully applies full format
-
-        This test verifies enable_logging(log_format="full") executes without error.
-        Detailed format validation is an implementation detail.
+        The full format string is ``{name}:{function}:{line} - {message}``. All three
+        source-location tokens must appear in the rendered stderr output.
 
         Args:
             log_sink (LogSink): Fixture providing log sink for capturing records.
         """
-        # Arrange - enable_logging with full format
-        handle = enable_logging(log_format="full")
+        # Arrange - capture stderr to inspect the rendered format output
+        captured_stderr = io.StringIO()
+        original_stderr = sys.stderr
 
-        # Act - perform operation that produces logs
-        toolkit = DataFrameToolkit()
-        df = pl.DataFrame({
-            "log_level": ["INFO", "WARNING", "ERROR"],
-            "count": [1500, 45, 3],
-        })
-        toolkit.register_dataframe("test_df", df)
+        try:
+            sys.stderr = captured_stderr
 
-        # Assert - logs were produced
-        with check:
-            assert len(log_sink.records) > 0, "Should have captured log records"
+            # Arrange - enable_logging with full format
+            handle = enable_logging(log_format="full")
 
-        # Cleanup
-        handle.disable()
+            # Act - perform operation that produces TOOL_CALL-level logs
+            toolkit = DataFrameToolkit()
+            df = pl.DataFrame({
+                "log_level": ["INFO", "WARNING", "ERROR"],
+                "event_count": [1500, 45, 3],
+            })
+            toolkit.register_dataframe("log_counts", df)
+            toolkit.get_dataframe_id("log_counts")  # produces TOOL_CALL entry
+
+            stderr_output = captured_stderr.getvalue()
+
+            # Assert - raw records were captured (log_sink still receives them)
+            dfkit_records = [r for r in log_sink.records if r["name"].startswith(PACKAGE_NAME)]
+            with check:
+                assert len(dfkit_records) > 0, "Should have captured dfkit log records"
+
+            # Assert - rendered output contains the full module path
+            with check:
+                assert "dfkit.toolkit" in stderr_output, "Full format should include the module path (dfkit.toolkit)"
+
+            # Assert - rendered output contains the function name
+            with check:
+                assert "get_dataframe_id" in stderr_output, "Full format should include the calling function name"
+
+            # Assert - rendered output contains a numeric line number (digit after the last colon
+            # in the source-location segment, e.g. ``dfkit.toolkit:get_dataframe_id:482``)
+            import re  # noqa: PLC0415 - local import intentional; re is stdlib
+
+            has_line_number = bool(re.search(r"dfkit\.toolkit:\w+:\d+", stderr_output))
+            with check:
+                assert has_line_number, "Full format should include a line number in 'module:function:line' pattern"
+
+        finally:
+            sys.stderr = original_stderr
+            handle.disable()
 
     def test_log_format_default_is_short(self, log_sink: LogSink) -> None:
-        """Verify calling enable_logging() without log_format argument uses 'short' format.
+        """Verify enable_logging() without log_format uses 'short' format by default.
 
-        Given: enable_logging() called with no log_format argument
-        When: Perform toolkit operation that produces logs
-        Then: enable_logging successfully applies default format
-
-        This verifies enable_logging() executes without error when using default format.
-        Detailed format validation is an implementation detail.
+        The default format must behave identically to ``log_format='short'``:
+        function name appears in rendered output, module path does not.
 
         Args:
             log_sink (LogSink): Fixture providing log sink for capturing records.
         """
-        # Arrange - enable_logging with default format (should be "short")
-        handle = enable_logging()
+        # Arrange - capture stderr to inspect the rendered format output
+        captured_stderr = io.StringIO()
+        original_stderr = sys.stderr
 
-        # Act - perform operation
-        toolkit = DataFrameToolkit()
-        df = pl.DataFrame({
-            "ip_address": ["192.168.1.1", "192.168.1.2", "192.168.1.3"],
-            "requests": [340, 125, 890],
-        })
-        toolkit.register_dataframe("test_df", df)
+        try:
+            sys.stderr = captured_stderr
 
-        # Assert - logs were produced
-        with check:
-            assert len(log_sink.records) > 0, "Should have captured log records"
+            # Arrange - enable_logging with default format (should be "short")
+            handle = enable_logging()
 
-        # Cleanup
-        handle.disable()
+            # Act - perform operation that produces TOOL_CALL-level logs
+            toolkit = DataFrameToolkit()
+            df = pl.DataFrame({
+                "ip_address": ["192.168.1.1", "192.168.1.2", "192.168.1.3"],
+                "request_count": [340, 125, 890],
+            })
+            toolkit.register_dataframe("web_traffic", df)
+            toolkit.get_dataframe_id("web_traffic")  # produces TOOL_CALL entry
+
+            stderr_output = captured_stderr.getvalue()
+
+            # Assert - raw records were captured (log_sink still receives them)
+            dfkit_records = [r for r in log_sink.records if r["name"].startswith(PACKAGE_NAME)]
+            with check:
+                assert len(dfkit_records) > 0, "Should have captured dfkit log records"
+
+            # Assert - default behaves like short: function name appears
+            with check:
+                assert "get_dataframe_id" in stderr_output, (
+                    "Default format should include the calling function name (same as 'short')"
+                )
+
+            # Assert - default behaves like short: module path is absent
+            with check:
+                assert "dfkit.toolkit" not in stderr_output, (
+                    "Default format should NOT include module path (same as 'short', omits {name})"
+                )
+
+        finally:
+            sys.stderr = original_stderr
+            handle.disable()
