@@ -1,4 +1,21 @@
-"""Example script to showcase logging in dfkit."""
+"""Demonstrates how to enable and configure logging in dfkit.
+
+dfkit logging is disabled by default. Users opt in by calling ``enable_logging()``,
+which returns a ``LoggingHandle``. The handle can be used as a context manager
+(``with enable_logging(): ...``) or disabled manually via ``handle.disable()``.
+When the last active handle is disabled, dfkit logging is automatically turned off.
+
+Key concepts shown here:
+
+- ``level``: controls the minimum log level. The custom ``TOOL_CALL`` level
+  (numeric value 25, between INFO and WARNING) surfaces toolkit method
+  invocations and is the default.
+- ``log_format``: ``"short"`` shows ``timestamp | level | function - message``;
+  ``"full"`` adds the module and line number.
+- Error logging: failed operations (e.g. looking up a nonexistent DataFrame)
+  are logged automatically without raising.
+- Automatic cleanup: logging is re-disabled when the context manager exits.
+"""
 
 import polars as pl
 
