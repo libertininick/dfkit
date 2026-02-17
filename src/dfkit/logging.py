@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import sys
+import threading
 import warnings
 from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
@@ -96,6 +97,7 @@ class LoggingHandle:
     """
 
     _active_ids: ClassVar[set[int]] = set()
+    _lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(self, handler_id: int) -> None:
         """Initialize the logging handle.
@@ -104,7 +106,8 @@ class LoggingHandle:
             handler_id (int): The loguru handler ID from logger.add().
         """
         self.handler_id: int | None = handler_id
-        LoggingHandle._active_ids.add(handler_id)
+        with LoggingHandle._lock:
+            LoggingHandle._active_ids.add(handler_id)
 
     def disable(self) -> None:
         """Remove the handler associated with this logging handle.
@@ -116,12 +119,13 @@ class LoggingHandle:
         """
         if self.handler_id is None:
             return
-        LoggingHandle._active_ids.discard(self.handler_id)
-        with contextlib.suppress(ValueError):
-            logger.remove(self.handler_id)
-        self.handler_id = None
-        if not LoggingHandle._active_ids:
-            logger.disable(PACKAGE_NAME)
+        with LoggingHandle._lock:
+            LoggingHandle._active_ids.discard(self.handler_id)
+            with contextlib.suppress(ValueError):
+                logger.remove(self.handler_id)
+            self.handler_id = None
+            if not LoggingHandle._active_ids:
+                logger.disable(PACKAGE_NAME)
 
     def __enter__(self) -> LoggingHandle:
         """Enter context manager.
@@ -146,7 +150,8 @@ class LoggingHandle:
         Returns:
             int: Count of active handles that have not been disabled.
         """
-        return len(cls._active_ids)
+        with cls._lock:
+            return len(cls._active_ids)
 
 
 def enable_logging(
