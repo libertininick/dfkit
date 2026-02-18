@@ -8,23 +8,119 @@ importance produced by the build_decision_tree tool.
 from __future__ import annotations
 
 import math
-from typing import Annotated, Literal
+import operator
+from collections.abc import Callable
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+type PredicateOp = Literal[">", ">=", "!=", "==", "<", "<=", "in", "not in"]
+
+
+class Predicate(BaseModel):
+    """A single boolean condition on one feature variable.
+
+    Represents a comparison such as ``tenure_months > 6`` or
+    ``plan_type in {basic, standard}``. Predicates are the building blocks
+    of decision-tree rules; each rule contains an ordered list of predicates
+    describing the path from the tree root to a leaf node.
+
+    Attributes:
+        variable (str): Feature or column name the condition applies to,
+            e.g. ``"tenure_months"`` or ``"plan_type"``.
+        operator (PredicateOp):
+            Comparison operator. Use ``"in"`` or ``"not in"`` for membership
+            tests against a set of values.
+        value (float | str | set[float] | set[str]): Threshold for scalar
+            comparisons, or a set of candidate values for ``"in"`` /
+            ``"not in"`` membership tests.
+
+    Examples:
+        >>> p = Predicate(variable="tenure_months", operator=">", value=6.0)
+        >>> str(p)
+        'tenure_months > 6.0'
+        >>> p.eval(12.0)
+        True
+        >>> p2 = Predicate(variable="plan_type", operator="in", value={"basic", "standard"})
+        >>> p2.eval("basic")
+        True
+    """
+
+    variable: str = Field(
+        description="Feature or column name the condition applies to, e.g. 'tenure_months'.",
+    )
+    operator: PredicateOp = Field(
+        description=(
+            "Comparison operator. Use 'in' or 'not in' for membership tests "
+            "against a set of values; use the scalar operators for threshold comparisons."
+        ),
+    )
+    value: float | str | set[float] | set[str] = Field(
+        description=(
+            "Threshold for scalar comparisons (float or str), or a set of candidate "
+            "values for 'in' / 'not in' membership tests."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_operator_value_compatibility(self) -> Predicate:
+        """Validate that the operator and value type are compatible.
+
+        Returns:
+            Predicate: The validated model instance.
+
+        Raises:
+            ValueError: If a membership operator is used with a non-set value,
+                or if a scalar operator is used with a set value.
+        """
+        if self.operator in {"in", "not in"}:
+            if not isinstance(self.value, set):
+                raise ValueError(
+                    f"Membership operator '{self.operator}' requires a set value, got {type(self.value).__name__}"
+                )
+        elif isinstance(self.value, set):
+            raise ValueError(f"Scalar operator '{self.operator}' requires a non-set value, got set")
+        return self
+
+    def __str__(self) -> str:
+        """Return the string representation of this predicate.
+
+        Returns:
+            str: For set operators, formats the set values without quotes,
+                e.g. ``"plan_type in {basic, standard}"``. For scalar
+                operators, formats as ``"<variable> <operator> <value>"``.
+        """
+        if self.operator in {"in", "not in"}:
+            sorted_values = ", ".join(str(v) for v in sorted(self.value))  # type: ignore[arg-type]
+            return f"{self.variable} {self.operator} {{{sorted_values}}}"
+        return f"{self.variable} {self.operator} {self.value}"
+
+    def eval(self, x: float | str) -> bool:
+        """Evaluate this predicate against a feature value.
+
+        Args:
+            x (float | str): The feature value to test.
+
+        Returns:
+            bool: ``True`` if the predicate holds for ``x``, ``False`` otherwise.
+        """
+        return _apply_operator(self.operator, x, self.value)
 
 
 class ClassificationRule(BaseModel):
     """A decision rule extracted from a classification tree leaf node.
 
     Represents the path from the root of the tree to one leaf, expressed as
-    a list of human-readable conditions, together with the predicted class
+    a list of :class:`Predicate` predicates, together with the predicted class
     label and the confidence at that leaf.
 
     Attributes:
         task_type (Literal["classification"]): Discriminator field; always
             ``"classification"``.
-        conditions (list[str]): Human-readable conditions along the path from
-            root to this leaf, e.g. ``["tenure_months > 6", "support_tickets <= 3"]``.
+        predicates (list[Predicate]): Predicates along the path from root to
+            this leaf, e.g.
+            ``[Predicate(variable="tenure_months", operator=">", value=6),
+            Predicate(variable="support_tickets", operator="<=", value=3)]``.
             An empty list means the tree has depth zero (a single leaf).
         prediction (str | float): Predicted class label for samples reaching
             this leaf.
@@ -35,7 +131,10 @@ class ClassificationRule(BaseModel):
     Examples:
         >>> rule = ClassificationRule(
         ...     task_type="classification",
-        ...     conditions=["tenure_months > 6", "support_tickets <= 3"],
+        ...     predicates=[
+        ...         Predicate(variable="tenure_months", operator=">", value=6),
+        ...         Predicate(variable="support_tickets", operator="<=", value=3),
+        ...     ],
         ...     prediction="retained",
         ...     samples=342,
         ...     confidence=0.91,
@@ -45,10 +144,10 @@ class ClassificationRule(BaseModel):
     task_type: Literal["classification"] = Field(
         description='Discriminator field. Always "classification".',
     )
-    conditions: list[str] = Field(
+    predicates: list[Predicate] = Field(
         description=(
-            "Human-readable conditions along the path from root to this leaf, "
-            'e.g. ["tenure_months > 6", "support_tickets <= 3"]. '
+            "Predicates along the path from root to this leaf. "
+            "Each Predicate captures a variable, operator, and threshold or value set. "
             "Empty list indicates a single-leaf tree with no splits."
         ),
     )
@@ -72,16 +171,18 @@ class RegressionRule(BaseModel):
     """A decision rule extracted from a regression tree leaf node.
 
     Represents the path from the root of the tree to one leaf, expressed as
-    a list of human-readable conditions, together with the predicted mean
+    a list of :class:`Predicate` predicates, together with the predicted mean
     target value and the spread of target values at that leaf.
 
     Attributes:
         task_type (Literal["regression"]): Discriminator field; always
             ``"regression"``.
-        conditions (list[str]): Human-readable conditions along the path from
-            root to this leaf, e.g. ``["age > 30", "income <= 50000"]``.
+        predicates (list[Predicate]): Predicates along the path from root to
+            this leaf, e.g.
+            ``[Predicate(variable="age", operator=">", value=30),
+            Predicate(variable="income", operator="<=", value=50000)]``.
             An empty list means the tree has depth zero (a single leaf).
-        prediction (str | float): Mean target value for samples reaching this
+        prediction (float): Mean target value for samples reaching this
             leaf.
         samples (int): Number of training samples that reached this leaf.
         std (float): Standard deviation of target values among samples at this
@@ -90,7 +191,10 @@ class RegressionRule(BaseModel):
     Examples:
         >>> rule = RegressionRule(
         ...     task_type="regression",
-        ...     conditions=["age > 30", "income <= 50000"],
+        ...     predicates=[
+        ...         Predicate(variable="age", operator=">", value=30),
+        ...         Predicate(variable="income", operator="<=", value=50000),
+        ...     ],
         ...     prediction=42500.0,
         ...     samples=187,
         ...     std=3200.5,
@@ -100,14 +204,14 @@ class RegressionRule(BaseModel):
     task_type: Literal["regression"] = Field(
         description='Discriminator field. Always "regression".',
     )
-    conditions: list[str] = Field(
+    predicates: list[Predicate] = Field(
         description=(
-            "Human-readable conditions along the path from root to this leaf, "
-            'e.g. ["age > 30", "income <= 50000"]. '
+            "Predicates along the path from root to this leaf. "
+            "Each Predicate captures a variable, operator, and threshold or value set. "
             "Empty list indicates a single-leaf tree with no splits."
         ),
     )
-    prediction: str | float = Field(
+    prediction: float = Field(
         description="Mean target value for samples reaching this leaf.",
     )
     samples: int = Field(
@@ -120,15 +224,14 @@ class RegressionRule(BaseModel):
     )
 
 
+#: Union of :class:`ClassificationRule` and :class:`RegressionRule`.
+#:
+#: Discriminated by the ``task_type`` field. Use this type when accepting a rule
+#: of either task type. Pydantic will select the correct model automatically.
 DecisionTreeRule = Annotated[
     ClassificationRule | RegressionRule,
     Field(discriminator="task_type"),
 ]
-"""Union of :class:`ClassificationRule` and :class:`RegressionRule`.
-
-Discriminated by the ``task_type`` field. Use this type when accepting a rule
-of either task type. Pydantic will select the correct model automatically.
-"""
 
 
 class DecisionTreeResult(BaseModel):
@@ -147,7 +250,7 @@ class DecisionTreeResult(BaseModel):
         features_excluded (list[str]): Feature column names that were excluded,
             each annotated with the reason for exclusion.
         rules (list[DecisionTreeRule]): One rule per leaf node, describing the
-            conditions and prediction for that path through the tree. Each
+            predicates and prediction for that path through the tree. Each
             rule's ``task_type`` field identifies its concrete type.
         feature_importance (dict[str, float]): Mapping of feature name to
             importance score, sorted in descending order of importance. Scores
@@ -168,7 +271,9 @@ class DecisionTreeResult(BaseModel):
         ...     rules=[
         ...         ClassificationRule(
         ...             task_type="classification",
-        ...             conditions=["tenure_months <= 6"],
+        ...             predicates=[
+        ...                 Predicate(variable="tenure_months", operator="<=", value=6),
+        ...             ],
         ...             prediction="churned",
         ...             samples=210,
         ...             confidence=0.87,
@@ -198,7 +303,7 @@ class DecisionTreeResult(BaseModel):
     )
     rules: list[DecisionTreeRule] = Field(
         description=(
-            "One rule per leaf node, describing the path conditions and prediction "
+            "One rule per leaf node, describing the path predicates and prediction "
             "for every reachable outcome of the tree. Each rule's task_type field "
             "identifies whether it is a ClassificationRule or RegressionRule."
         ),
@@ -248,6 +353,21 @@ class DecisionTreeResult(BaseModel):
         return value
 
     @model_validator(mode="after")
+    def _validate_feature_importance_keys_in_features_used(self) -> DecisionTreeResult:
+        """Validate that all feature_importance keys are present in features_used.
+
+        Returns:
+            DecisionTreeResult: The validated model instance.
+
+        Raises:
+            ValueError: If any key in ``feature_importance`` is not in ``features_used``.
+        """
+        invalid = set(self.feature_importance) - set(self.features_used)
+        if invalid:
+            raise ValueError(f"feature_importance contains keys not in features_used: {sorted(invalid)}")
+        return self
+
+    @model_validator(mode="after")
     def _validate_rules_count_matches_leaf_count(self) -> DecisionTreeResult:
         """Validate that the number of rules equals the number of leaf nodes.
 
@@ -260,3 +380,59 @@ class DecisionTreeResult(BaseModel):
         if len(self.rules) != self.leaf_count:
             raise ValueError(f"rules length ({len(self.rules)}) must equal leaf_count ({self.leaf_count})")
         return self
+
+    @model_validator(mode="after")
+    def _validate_rule_types_match_task_type(self) -> DecisionTreeResult:
+        """Validate that every rule's task_type matches the result's task_type.
+
+        Returns:
+            DecisionTreeResult: The validated model instance.
+
+        Raises:
+            ValueError: If any rule has a ``task_type`` that does not match
+                ``self.task_type``.
+        """
+        if any(rule.task_type != self.task_type for rule in self.rules):
+            raise ValueError(f"rules have task_type inconsistent with result task_type '{self.task_type}'")
+        return self
+
+
+_SCALAR_OPS: dict[str, Callable[[Any, Any], bool]] = {
+    ">": operator.gt,
+    ">=": operator.ge,
+    "<": operator.lt,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+}
+
+
+def _apply_operator(
+    operator: PredicateOp,
+    x: float | str,
+    threshold: float | str | set[float] | set[str],
+) -> bool:
+    """Apply a comparison operator between a feature value and a threshold.
+
+    Args:
+        operator (PredicateOp): The comparison operator to apply.
+        x (float | str): The feature value to compare.
+        threshold (float | str | set[float] | set[str]): The threshold or
+            set of candidate values to compare against.
+
+    Returns:
+        bool: Result of applying ``operator`` between ``x`` and ``threshold``.
+
+    Raises:
+        ValueError: If ``operator`` is not a recognized ``PredicateOp`` value.
+    """
+    result: bool
+    if operator in _SCALAR_OPS:
+        result = _SCALAR_OPS[operator](x, threshold)
+    elif operator == "in" and isinstance(threshold, set):
+        result = x in threshold
+    elif operator == "not in" and isinstance(threshold, set):
+        result = x not in threshold
+    else:
+        raise ValueError(f"Unexpected operator: {operator!r}")
+    return result

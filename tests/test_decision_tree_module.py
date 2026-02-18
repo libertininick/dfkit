@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 from pytest_check import check
@@ -10,8 +12,389 @@ from dfkit.decision_tree_module import (
     ClassificationRule,
     DecisionTreeResult,
     DecisionTreeRule,
+    Predicate,
     RegressionRule,
 )
+
+
+class TestPredicate:
+    """Tests for the Predicate model: construction, repr/str, eval, and serialization."""
+
+    # ------------------------------------------------------------------
+    # Construction tests
+    # ------------------------------------------------------------------
+
+    def test_numeric_predicate_construction_sets_correct_fields(self) -> None:
+        """Numeric predicate should populate all three fields from constructor arguments."""
+        # Arrange / Act
+        predicate = Predicate(variable="tenure_months", operator=">", value=6.0)
+
+        # Assert
+        with check:
+            assert predicate.variable == "tenure_months"
+        with check:
+            assert predicate.operator == ">"
+        with check:
+            assert predicate.value == 6.0
+
+    def test_string_predicate_construction_sets_correct_fields(self) -> None:
+        """String-value predicate should populate all three fields from constructor arguments."""
+        # Arrange / Act
+        predicate = Predicate(variable="status", operator="==", value="active")
+
+        # Assert
+        with check:
+            assert predicate.variable == "status"
+        with check:
+            assert predicate.operator == "=="
+        with check:
+            assert predicate.value == "active"
+
+    def test_set_predicate_construction_sets_correct_fields(self) -> None:
+        """Set-value predicate should populate all three fields including the set value."""
+        # Arrange / Act
+        predicate = Predicate(variable="plan_type", operator="in", value={"basic", "standard"})
+
+        # Assert
+        with check:
+            assert predicate.variable == "plan_type"
+        with check:
+            assert predicate.operator == "in"
+        with check:
+            assert predicate.value == {"basic", "standard"}
+
+    @pytest.mark.parametrize(
+        "operator",
+        [">", ">=", "!=", "==", "<", "<=", "in", "not in"],
+    )
+    def test_all_operators_accepted(self, operator: str) -> None:
+        """Every operator in the Literal set should be accepted without a ValidationError.
+
+        Args:
+            operator (str): One of the eight valid comparison operators to test.
+        """
+        # Arrange
+        is_membership_operator = operator in {"in", "not in"}
+        predicate_value: float | set[str] = {"a", "b"} if is_membership_operator else 1.0
+
+        # Act
+        predicate = Predicate(variable="x", operator=operator, value=predicate_value)  # type: ignore[arg-type]
+
+        # Assert
+        assert predicate.operator == operator
+
+    def test_invalid_operator_rejected_raises_validation_error(self) -> None:
+        """An operator not in the Literal set should raise a ValidationError."""
+        # Arrange / Act / Assert
+        with pytest.raises(ValidationError):
+            Predicate(variable="x", operator="~=", value=1.0)  # type: ignore[arg-type]
+
+    # ------------------------------------------------------------------
+    # Operator-value compatibility validation tests
+    # ------------------------------------------------------------------
+
+    @pytest.mark.parametrize("operator", ["in", "not in"])
+    def test_membership_operator_with_scalar_value_raises_validation_error(self, operator: str) -> None:
+        """Membership operators paired with a numeric scalar should raise a ValidationError.
+
+        The model validator must reject ``"in"`` and ``"not in"`` when the value
+        is a plain float, because membership tests require a set of candidates.
+
+        Args:
+            operator (str): A membership operator (``"in"`` or ``"not in"``) to test.
+        """
+        # Arrange
+        scalar_value = 5.0
+
+        # Act / Assert
+        with pytest.raises(ValidationError):
+            Predicate(variable="x", operator=operator, value=scalar_value)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("operator", ["in", "not in"])
+    def test_membership_operator_with_string_scalar_raises_validation_error(self, operator: str) -> None:
+        """Membership operators paired with a string scalar should raise a ValidationError.
+
+        A bare string is not a set; the model validator must reject it when the
+        operator is ``"in"`` or ``"not in"``.
+
+        Args:
+            operator (str): A membership operator (``"in"`` or ``"not in"``) to test.
+        """
+        # Arrange
+        string_value = "hello"
+
+        # Act / Assert
+        with pytest.raises(ValidationError):
+            Predicate(variable="x", operator=operator, value=string_value)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("operator", [">", ">=", "<", "<=", "==", "!="])
+    def test_scalar_operator_with_set_value_raises_validation_error(self, operator: str) -> None:
+        """Scalar operators paired with a set value should raise a ValidationError.
+
+        Threshold comparisons (``>``, ``>=``, ``<``, ``<=``, ``==``, ``!=``) require
+        a scalar value; the model validator must reject a set.
+
+        Args:
+            operator (str): A scalar comparison operator to test.
+        """
+        # Arrange
+        set_value: set[str] = {"a", "b"}
+
+        # Act / Assert
+        with pytest.raises(ValidationError):
+            Predicate(variable="x", operator=operator, value=set_value)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("operator", ["in", "not in"])
+    def test_membership_operator_with_set_value_accepted(self, operator: str) -> None:
+        """Membership operators paired with a set value should be accepted without error.
+
+        Verifies that constructing a predicate with ``"in"`` or ``"not in"``
+        and a ``set`` value succeeds and preserves the set on the model.
+
+        Args:
+            operator (str): A membership operator (``"in"`` or ``"not in"``) to test.
+        """
+        # Arrange
+        set_value: set[str] = {"x", "y"}
+
+        # Act
+        predicate = Predicate(variable="category", operator=operator, value=set_value)  # type: ignore[arg-type]
+
+        # Assert
+        with check:
+            assert predicate.value == {"x", "y"}
+
+    def test_scalar_operator_with_numeric_value_accepted(self) -> None:
+        """A scalar operator paired with a numeric value should be accepted without error.
+
+        Verifies that ``">"`` with a float threshold passes the operator-value
+        compatibility validator and the value is preserved on the model.
+        """
+        # Arrange / Act
+        predicate = Predicate(variable="score", operator=">", value=5.0)
+
+        # Assert
+        with check:
+            assert predicate.value == 5.0
+
+    def test_scalar_operator_with_string_value_accepted(self) -> None:
+        """A scalar operator paired with a string value should be accepted without error.
+
+        Verifies that ``"=="`` with a string scalar passes the operator-value
+        compatibility validator and the value is preserved on the model.
+        """
+        # Arrange / Act
+        predicate = Predicate(variable="status", operator="==", value="active")
+
+        # Assert
+        with check:
+            assert predicate.value == "active"
+
+    # ------------------------------------------------------------------
+    # Str tests
+    # ------------------------------------------------------------------
+
+    def test_str_numeric_produces_expected_string(self) -> None:
+        """str() of a numeric predicate should format as 'variable operator value'."""
+        # Arrange
+        predicate = Predicate(variable="tenure_months", operator=">", value=6.0)
+
+        # Act
+        representation = str(predicate)
+
+        # Assert
+        assert representation == "tenure_months > 6.0"
+
+    def test_str_string_equality_produces_readable_output(self) -> None:
+        """str() of a string equality predicate should include the string value."""
+        # Arrange
+        predicate = Predicate(variable="status", operator="==", value="active")
+
+        # Act
+        representation = str(predicate)
+
+        # Assert
+        assert representation == "status == active"
+
+    def test_str_set_membership_produces_sorted_set_contents(self) -> None:
+        """str() of an 'in' predicate should list set members in sorted order."""
+        # Arrange
+        predicate = Predicate(variable="plan_type", operator="in", value={"basic", "standard"})
+
+        # Act
+        representation = str(predicate)
+
+        # Assert — sorted alphabetically: basic before standard
+        assert representation == "plan_type in {basic, standard}"
+
+    # ------------------------------------------------------------------
+    # Eval tests
+    # ------------------------------------------------------------------
+
+    def test_eval_greater_than_returns_correct_truth_values(self) -> None:
+        """Eval with '>' should return True when x exceeds the threshold and False otherwise."""
+        # Arrange
+        predicate = Predicate(variable="x", operator=">", value=5.0)
+
+        # Act / Assert
+        with check:
+            assert predicate.eval(6.0) is True
+        with check:
+            assert predicate.eval(4.0) is False
+
+    def test_eval_greater_equal_boundary_returns_true(self) -> None:
+        """Eval with '>=' at the exact boundary value should return True."""
+        # Arrange
+        predicate = Predicate(variable="x", operator=">=", value=5.0)
+
+        # Act / Assert
+        with check:
+            assert predicate.eval(5.0) is True
+        with check:
+            assert predicate.eval(4.9) is False
+
+    def test_eval_less_than_returns_correct_truth_values(self) -> None:
+        """Eval with '<' should return True when x is below the threshold and False otherwise."""
+        # Arrange
+        predicate = Predicate(variable="x", operator="<", value=5.0)
+
+        # Act / Assert
+        with check:
+            assert predicate.eval(3.0) is True
+        with check:
+            assert predicate.eval(5.0) is False
+
+    def test_eval_less_equal_boundary_returns_true(self) -> None:
+        """Eval with '<=' at the exact boundary value should return True."""
+        # Arrange
+        predicate = Predicate(variable="x", operator="<=", value=5.0)
+
+        # Act / Assert
+        with check:
+            assert predicate.eval(5.0) is True
+        with check:
+            assert predicate.eval(5.1) is False
+
+    def test_eval_equal_matching_value_returns_true(self) -> None:
+        """Eval with '==' should return True when x exactly matches the threshold."""
+        # Arrange
+        predicate = Predicate(variable="x", operator="==", value=5.0)
+
+        # Act / Assert
+        with check:
+            assert predicate.eval(5.0) is True
+        with check:
+            assert predicate.eval(4.0) is False
+
+    def test_eval_not_equal_differing_value_returns_true(self) -> None:
+        """Eval with '!=' should return True when x differs from the threshold."""
+        # Arrange
+        predicate = Predicate(variable="x", operator="!=", value=5.0)
+
+        # Act / Assert
+        with check:
+            assert predicate.eval(3.0) is True
+        with check:
+            assert predicate.eval(5.0) is False
+
+    def test_eval_in_set_returns_correct_truth_values(self) -> None:
+        """Eval with 'in' should return True when x is in the set and False otherwise."""
+        # Arrange
+        predicate = Predicate(variable="x", operator="in", value={"a", "b"})
+
+        # Act / Assert
+        with check:
+            assert predicate.eval("a") is True
+        with check:
+            assert predicate.eval("c") is False
+
+    def test_eval_not_in_set_absent_value_returns_true(self) -> None:
+        """Eval with 'not in' should return True when x is absent from the set."""
+        # Arrange
+        predicate = Predicate(variable="x", operator="not in", value={"a", "b"})
+
+        # Act / Assert
+        with check:
+            assert predicate.eval("c") is True
+        with check:
+            assert predicate.eval("a") is False
+
+    def test_eval_in_set_float_membership_returns_correct_truth_values(self) -> None:
+        """Eval with 'in' against a float set should return True for members and False for non-members."""
+        # Arrange
+        predicate = Predicate(variable="x", operator="in", value={1.0, 2.0})
+
+        # Act / Assert
+        with check:
+            assert predicate.eval(1.0) is True
+        with check:
+            assert predicate.eval(3.0) is False
+
+    def test_eval_string_equality_returns_correct_truth_values(self) -> None:
+        """Eval with '==' against a string value should return True for a matching string and False otherwise."""
+        # Arrange
+        predicate = Predicate(variable="status", operator="==", value="active")
+
+        # Act / Assert
+        with check:
+            assert predicate.eval("active") is True
+        with check:
+            assert predicate.eval("inactive") is False
+
+    # ------------------------------------------------------------------
+    # Serialization tests
+    # ------------------------------------------------------------------
+
+    def test_serialization_roundtrip_numeric_preserves_all_fields(self) -> None:
+        """model_dump / model_validate roundtrip should preserve all fields for a numeric predicate."""
+        # Arrange
+        original = Predicate(variable="tenure_months", operator=">", value=6.0)
+
+        # Act
+        restored = Predicate.model_validate(original.model_dump())
+
+        # Assert
+        with check:
+            assert restored.variable == original.variable
+        with check:
+            assert restored.operator == original.operator
+        with check:
+            assert restored.value == original.value
+
+    def test_serialization_roundtrip_set_preserves_set_values(self) -> None:
+        """model_dump / model_validate roundtrip should preserve set values for a membership predicate.
+
+        Pydantic serializes sets to lists; model_validate must reconstruct the set correctly.
+        """
+        # Arrange
+        original = Predicate(variable="plan_type", operator="in", value={"basic", "standard"})
+
+        # Act
+        restored = Predicate.model_validate(original.model_dump())
+
+        # Assert
+        with check:
+            assert restored.variable == original.variable
+        with check:
+            assert restored.operator == original.operator
+        with check:
+            assert restored.value == original.value
+
+    def test_json_roundtrip_preserves_all_fields(self) -> None:
+        """model_dump_json / model_validate_json roundtrip should preserve all fields."""
+        # Arrange
+        original = Predicate(variable="score", operator=">=", value=0.75)
+
+        # Act
+        restored = Predicate.model_validate_json(original.model_dump_json())
+
+        # Assert
+        with check:
+            assert restored.variable == original.variable
+        with check:
+            assert restored.operator == original.operator
+        with check:
+            assert restored.value == original.value
 
 
 class TestDecisionTreeRule:
@@ -24,12 +407,16 @@ class TestDecisionTreeRule:
         every field correctly via the ClassificationRule concrete type.
         """
         # Arrange
-        conditions = ["tenure_months > 12", "support_tickets <= 2", "monthly_charges <= 75.0"]
+        predicates = [
+            Predicate(variable="tenure_months", operator=">", value=12.0),
+            Predicate(variable="support_tickets", operator="<=", value=2.0),
+            Predicate(variable="monthly_charges", operator="<=", value=75.0),
+        ]
 
         # Act
         rule = ClassificationRule(
             task_type="classification",
-            conditions=conditions,
+            predicates=predicates,
             prediction="retained",
             samples=342,
             confidence=0.91,
@@ -39,7 +426,7 @@ class TestDecisionTreeRule:
         with check:
             assert rule.task_type == "classification"
         with check:
-            assert rule.conditions == conditions
+            assert rule.predicates == predicates
         with check:
             assert rule.prediction == "retained"
         with check:
@@ -54,12 +441,16 @@ class TestDecisionTreeRule:
         every field correctly via the RegressionRule concrete type.
         """
         # Arrange
-        conditions = ["years_experience > 5", "education_level <= 2", "department == Engineering"]
+        predicates = [
+            Predicate(variable="years_experience", operator=">", value=5.0),
+            Predicate(variable="education_level", operator="<=", value=2.0),
+            Predicate(variable="department", operator="==", value="Engineering"),
+        ]
 
         # Act
         rule = RegressionRule(
             task_type="regression",
-            conditions=conditions,
+            predicates=predicates,
             prediction=112_500.0,
             samples=87,
             std=18_430.75,
@@ -69,7 +460,7 @@ class TestDecisionTreeRule:
         with check:
             assert rule.task_type == "regression"
         with check:
-            assert rule.conditions == conditions
+            assert rule.predicates == predicates
         with check:
             assert rule.prediction == 112_500.0
         with check:
@@ -84,7 +475,10 @@ class TestDecisionTreeRule:
                 ClassificationRule,
                 {
                     "task_type": "classification",
-                    "conditions": ["credit_score > 700", "loan_amount <= 50000"],
+                    "predicates": [
+                        Predicate(variable="credit_score", operator=">", value=700.0),
+                        Predicate(variable="loan_amount", operator="<=", value=50000.0),
+                    ],
                     "prediction": "approved",
                     "samples": 519,
                     "confidence": 0.84,
@@ -95,7 +489,10 @@ class TestDecisionTreeRule:
                 RegressionRule,
                 {
                     "task_type": "regression",
-                    "conditions": ["years_experience > 8", "management_level == True"],
+                    "predicates": [
+                        Predicate(variable="years_experience", operator=">", value=8.0),
+                        Predicate(variable="management_level", operator="==", value="True"),
+                    ],
                     "prediction": 148_300.0,
                     "samples": 59,
                     "std": 22_900.25,
@@ -106,9 +503,9 @@ class TestDecisionTreeRule:
     )
     def test_rule_serialization_roundtrip_produces_identical_object(
         self,
-        rule_class: type[ClassificationRule] | type[RegressionRule],
-        kwargs: dict,
-        expected_model: type[ClassificationRule] | type[RegressionRule],
+        rule_class: type[ClassificationRule | RegressionRule],
+        kwargs: dict[str, Any],
+        expected_model: type[ClassificationRule | RegressionRule],
     ) -> None:
         """Serializing a rule to a dict and validating it back should produce an equal model.
 
@@ -117,9 +514,9 @@ class TestDecisionTreeRule:
         for both ClassificationRule and RegressionRule.
 
         Args:
-            rule_class (type[ClassificationRule] | type[RegressionRule]): The rule class to construct.
-            kwargs (dict): Constructor keyword arguments for the rule.
-            expected_model (type[ClassificationRule] | type[RegressionRule]): The model class used for validation.
+            rule_class (type[ClassificationRule | RegressionRule]): The rule class to construct.
+            kwargs (dict[str, Any]): Constructor keyword arguments for the rule.
+            expected_model (type[ClassificationRule | RegressionRule]): The model class used for validation.
         """
         # Arrange
         original = rule_class(**kwargs)
@@ -130,12 +527,12 @@ class TestDecisionTreeRule:
         # Assert
         assert restored == original
 
-    def test_classification_rule_with_empty_conditions_represents_single_leaf(self) -> None:
-        """A classification rule with no conditions should be accepted as a valid single-leaf tree."""
+    def test_classification_rule_with_empty_predicates_represents_single_leaf(self) -> None:
+        """A classification rule with no predicates should be accepted as a valid single-leaf tree."""
         # Act
         rule = ClassificationRule(
             task_type="classification",
-            conditions=[],
+            predicates=[],
             prediction="no_churn",
             samples=1000,
             confidence=0.95,
@@ -143,23 +540,36 @@ class TestDecisionTreeRule:
 
         # Assert
         with check:
-            assert rule.conditions == []
+            assert rule.predicates == []
         with check:
             assert rule.prediction == "no_churn"
         with check:
             assert rule.samples == 1000
 
     @pytest.mark.parametrize(
-        ("confidence", "conditions", "prediction", "samples"),
+        ("confidence", "predicates", "prediction", "samples"),
         [
-            (0.0, ["account_age_days <= 30"], "high_risk", 45),
-            (1.0, ["account_age_days > 365", "payment_failures == 0"], "low_risk", 312),
+            (
+                0.0,
+                [Predicate(variable="account_age_days", operator="<=", value=30.0)],
+                "high_risk",
+                45,
+            ),
+            (
+                1.0,
+                [
+                    Predicate(variable="account_age_days", operator=">", value=365.0),
+                    Predicate(variable="payment_failures", operator="==", value=0.0),
+                ],
+                "low_risk",
+                312,
+            ),
         ],
     )
     def test_classification_rule_with_boundary_confidence_values(
         self,
         confidence: float,
-        conditions: list[str],
+        predicates: list[Predicate],
         prediction: str,
         samples: int,
     ) -> None:
@@ -167,14 +577,14 @@ class TestDecisionTreeRule:
 
         Args:
             confidence (float): The boundary confidence value to test (0.0 or 1.0).
-            conditions (list[str]): Path conditions for the rule.
+            predicates (list[Predicate]): Path predicates for the rule.
             prediction (str): Predicted class label for the rule.
             samples (int): Number of training samples at this leaf.
         """
         # Act
         rule = ClassificationRule(
             task_type="classification",
-            conditions=conditions,
+            predicates=predicates,
             prediction=prediction,
             samples=samples,
             confidence=confidence,
@@ -189,7 +599,7 @@ class TestDecisionTreeRule:
         # Act
         rule = RegressionRule(
             task_type="regression",
-            conditions=["contract_type == fixed_rate"],
+            predicates=[Predicate(variable="contract_type", operator="==", value="fixed_rate")],
             prediction=50_000.0,
             samples=12,
             std=0.0,
@@ -208,7 +618,7 @@ class TestDecisionTreeRule:
         with pytest.raises(ValidationError, match="confidence"):
             ClassificationRule(  # type: ignore[call-arg]
                 task_type="classification",
-                conditions=["product_category == electronics"],
+                predicates=[Predicate(variable="product_category", operator="==", value="electronics")],
                 prediction="medium_value",
                 samples=78,
             )
@@ -222,7 +632,7 @@ class TestDecisionTreeRule:
         with pytest.raises(ValidationError, match="std"):
             RegressionRule(  # type: ignore[call-arg]
                 task_type="regression",
-                conditions=["years_experience > 5"],
+                predicates=[Predicate(variable="years_experience", operator=">", value=5.0)],
                 prediction=95_000.0,
                 samples=120,
             )
@@ -233,7 +643,7 @@ class TestDecisionTreeRule:
         with pytest.raises(ValidationError, match="samples"):
             ClassificationRule(
                 task_type="classification",
-                conditions=["purchase_count > 5"],
+                predicates=[Predicate(variable="purchase_count", operator=">", value=5.0)],
                 prediction="loyal",
                 samples=-1,
                 confidence=0.82,
@@ -248,7 +658,7 @@ class TestDecisionTreeRule:
         with pytest.raises(ValidationError, match="samples"):
             ClassificationRule(
                 task_type="classification",
-                conditions=["tenure_months > 6"],
+                predicates=[Predicate(variable="tenure_months", operator=">", value=6.0)],
                 prediction="retained",
                 samples=0,
                 confidence=0.75,
@@ -268,7 +678,7 @@ class TestDecisionTreeRule:
         with pytest.raises(ValidationError):
             ClassificationRule(
                 task_type="classification",
-                conditions=["days_since_login <= 7"],
+                predicates=[Predicate(variable="days_since_login", operator="<=", value=7.0)],
                 prediction="active",
                 samples=203,
                 confidence=bad_confidence,
@@ -288,7 +698,7 @@ class TestDecisionTreeRule:
         with pytest.raises(ValidationError):
             RegressionRule(
                 task_type="regression",
-                conditions=["years_experience > 5"],
+                predicates=[Predicate(variable="years_experience", operator=">", value=5.0)],
                 prediction=95_000.0,
                 samples=120,
                 std=bad_std,
@@ -309,14 +719,17 @@ class TestDecisionTreeResult:
         rules: list[DecisionTreeRule] = [
             ClassificationRule(
                 task_type="classification",
-                conditions=["tenure_months <= 6"],
+                predicates=[Predicate(variable="tenure_months", operator="<=", value=6.0)],
                 prediction="churned",
                 samples=210,
                 confidence=0.87,
             ),
             ClassificationRule(
                 task_type="classification",
-                conditions=["tenure_months > 6", "support_tickets <= 1"],
+                predicates=[
+                    Predicate(variable="tenure_months", operator=">", value=6.0),
+                    Predicate(variable="support_tickets", operator="<=", value=1.0),
+                ],
                 prediction="retained",
                 samples=891,
                 confidence=0.93,
@@ -377,21 +790,27 @@ class TestDecisionTreeResult:
         rules: list[DecisionTreeRule] = [
             RegressionRule(
                 task_type="regression",
-                conditions=["years_experience <= 2"],
+                predicates=[Predicate(variable="years_experience", operator="<=", value=2.0)],
                 prediction=54_200.0,
                 samples=143,
                 std=6_810.5,
             ),
             RegressionRule(
                 task_type="regression",
-                conditions=["years_experience > 2", "years_experience <= 8"],
+                predicates=[
+                    Predicate(variable="years_experience", operator=">", value=2.0),
+                    Predicate(variable="years_experience", operator="<=", value=8.0),
+                ],
                 prediction=85_750.0,
                 samples=298,
                 std=11_340.0,
             ),
             RegressionRule(
                 task_type="regression",
-                conditions=["years_experience > 8", "management_level == True"],
+                predicates=[
+                    Predicate(variable="years_experience", operator=">", value=8.0),
+                    Predicate(variable="management_level", operator="==", value="True"),
+                ],
                 prediction=148_300.0,
                 samples=59,
                 std=22_900.25,
@@ -441,9 +860,25 @@ class TestDecisionTreeResult:
             assert tree_result.leaf_count == 3
 
     @pytest.mark.parametrize(
-        "original",
-        [
-            DecisionTreeResult(
+        "tree_id",
+        ["classification", "regression"],
+    )
+    def test_result_serialization_roundtrip_produces_identical_object(
+        self,
+        tree_id: str,
+    ) -> None:
+        """Serializing a result to a dict and validating it back should produce an equal model.
+
+        Exercises model_dump followed by model_validate to confirm that no field
+        is lost or mutated during a round-trip, including nested rule objects
+        embedded in the rules list, for both classification and regression results.
+
+        Args:
+            tree_id (str): Identifies which fixture to build: ``"classification"`` or ``"regression"``.
+        """
+        # Arrange
+        if tree_id == "classification":
+            original = DecisionTreeResult(
                 target="price_tier",
                 task_type="classification",
                 features_used=["sqft", "bedrooms", "neighbourhood_score"],
@@ -451,14 +886,20 @@ class TestDecisionTreeResult:
                 rules=[
                     ClassificationRule(
                         task_type="classification",
-                        conditions=["sqft <= 800", "neighbourhood_score <= 5"],
+                        predicates=[
+                            Predicate(variable="sqft", operator="<=", value=800.0),
+                            Predicate(variable="neighbourhood_score", operator="<=", value=5.0),
+                        ],
                         prediction="budget",
                         samples=405,
                         confidence=0.78,
                     ),
                     ClassificationRule(
                         task_type="classification",
-                        conditions=["sqft > 800", "bedrooms >= 3"],
+                        predicates=[
+                            Predicate(variable="sqft", operator=">", value=800.0),
+                            Predicate(variable="bedrooms", operator=">=", value=3.0),
+                        ],
                         prediction="premium",
                         samples=317,
                         confidence=0.88,
@@ -469,8 +910,9 @@ class TestDecisionTreeResult:
                 sample_count=722,
                 depth=2,
                 leaf_count=2,
-            ),
-            DecisionTreeResult(
+            )
+        else:
+            original = DecisionTreeResult(
                 target="house_price",
                 task_type="regression",
                 features_used=["sqft", "bedrooms", "garage_spaces"],
@@ -478,14 +920,17 @@ class TestDecisionTreeResult:
                 rules=[
                     RegressionRule(
                         task_type="regression",
-                        conditions=["sqft <= 1200"],
+                        predicates=[Predicate(variable="sqft", operator="<=", value=1200.0)],
                         prediction=285_000.0,
                         samples=230,
                         std=42_500.0,
                     ),
                     RegressionRule(
                         task_type="regression",
-                        conditions=["sqft > 1200", "bedrooms >= 3"],
+                        predicates=[
+                            Predicate(variable="sqft", operator=">", value=1200.0),
+                            Predicate(variable="bedrooms", operator=">=", value=3.0),
+                        ],
                         prediction=520_000.0,
                         samples=180,
                         std=78_300.0,
@@ -496,60 +941,13 @@ class TestDecisionTreeResult:
                 sample_count=410,
                 depth=2,
                 leaf_count=2,
-            ),
-        ],
-    )
-    def test_result_serialization_roundtrip_produces_identical_object(
-        self,
-        original: DecisionTreeResult,
-    ) -> None:
-        """Serializing a result to a dict and validating it back should produce an equal model.
+            )
 
-        Exercises model_dump followed by model_validate to confirm that no field
-        is lost or mutated during a round-trip, including nested rule objects
-        embedded in the rules list, for both classification and regression results.
-
-        Args:
-            original (DecisionTreeResult): A fully constructed result to round-trip through serialization.
-        """
         # Act
         restored = DecisionTreeResult.model_validate(original.model_dump())
 
         # Assert
         assert restored == original
-
-    def test_result_with_rules_matching_leaf_count_is_accepted(self) -> None:
-        """A result where len(rules) equals leaf_count should be accepted.
-
-        Verifies the invariant that every leaf node has a corresponding rule
-        when the counts match exactly.
-        """
-        # Arrange
-        rule = ClassificationRule(
-            task_type="classification",
-            conditions=[],
-            prediction="no_churn",
-            samples=500,
-            confidence=0.95,
-        )
-
-        # Act
-        tree_result = DecisionTreeResult(
-            target="subscription_tier",
-            task_type="classification",
-            features_used=["monthly_spend"],
-            features_excluded=[],
-            rules=[rule],
-            feature_importance={"monthly_spend": 1.0},
-            metrics={"accuracy": 0.95},
-            sample_count=500,
-            depth=0,
-            leaf_count=1,
-        )
-
-        # Assert
-        with check:
-            assert len(tree_result.rules) == tree_result.leaf_count
 
     def test_result_rejects_empty_rules_when_leaf_count_is_one(self) -> None:
         """A result with rules=[] and leaf_count=1 should raise a ValidationError.
@@ -588,14 +986,14 @@ class TestDecisionTreeResult:
                 rules=[
                     ClassificationRule(
                         task_type="classification",
-                        conditions=["sqft <= 800"],
+                        predicates=[Predicate(variable="sqft", operator="<=", value=800.0)],
                         prediction="budget",
                         samples=200,
                         confidence=0.80,
                     ),
                     ClassificationRule(
                         task_type="classification",
-                        conditions=["sqft > 800"],
+                        predicates=[Predicate(variable="sqft", operator=">", value=800.0)],
                         prediction="premium",
                         samples=300,
                         confidence=0.85,
@@ -619,7 +1017,7 @@ class TestDecisionTreeResult:
             rules=[
                 ClassificationRule(
                     task_type="classification",
-                    conditions=[],
+                    predicates=[],
                     prediction="low_risk",
                     samples=500,
                     confidence=0.72,
@@ -652,11 +1050,11 @@ class TestDecisionTreeResult:
                 rules=[
                     ClassificationRule(
                         task_type="classification",
-                        conditions=["age > 30"],
+                        predicates=[Predicate(variable="age", operator=">", value=30.0)],
                         prediction="group_a",
                         samples=100,
                         confidence=0.75,
-                    )
+                    ),
                 ],
                 feature_importance={"age": 0.5, "income": 0.5},
                 metrics={},
@@ -677,11 +1075,11 @@ class TestDecisionTreeResult:
                 rules=[
                     ClassificationRule(
                         task_type="classification",
-                        conditions=[],
+                        predicates=[],
                         prediction="no_fraud",
                         samples=200,
                         confidence=0.9,
-                    )
+                    ),
                 ],
                 feature_importance={"transaction_amount": 1.0},
                 metrics={"accuracy": 0.9},
@@ -702,11 +1100,11 @@ class TestDecisionTreeResult:
                 rules=[
                     ClassificationRule(
                         task_type="classification",
-                        conditions=[],
+                        predicates=[],
                         prediction="converted",
                         samples=1,
                         confidence=1.0,
-                    )
+                    ),
                 ],
                 feature_importance={"page_views": 1.0},
                 metrics={"accuracy": 0.0},
@@ -748,11 +1146,11 @@ class TestDecisionTreeResult:
                 rules=[
                     ClassificationRule(
                         task_type="classification",
-                        conditions=[],
+                        predicates=[],
                         prediction="retained",
                         samples=300,
                         confidence=0.80,
-                    )
+                    ),
                 ],
                 feature_importance={"tenure_months": 0.60, "support_tickets": 0.60},
                 metrics={"accuracy": 0.80},
@@ -776,11 +1174,11 @@ class TestDecisionTreeResult:
             rules=[
                 ClassificationRule(
                     task_type="classification",
-                    conditions=[],
+                    predicates=[],
                     prediction="retained",
                     samples=500,
                     confidence=0.82,
-                )
+                ),
             ],
             feature_importance={
                 "tenure_months": 0.500_000_000_3,
