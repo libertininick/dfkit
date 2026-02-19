@@ -91,6 +91,11 @@ class Predicate(BaseModel):
                 operators, formats as ``"<variable> <operator> <value>"``.
         """
         if self.operator in {"in", "not in"}:
+            # sorted() expects an Iterable[SupportsLessThan], but the union
+            # type includes float|str which ty cannot prove is sortable as a
+            # homogeneous collection.  At runtime self.value is always a
+            # set[float] or set[str] here (enforced by the model validator),
+            # so sorting is safe.
             sorted_values = ", ".join(str(v) for v in sorted(self.value))  # type: ignore[arg-type]
             return f"{self.variable} {self.operator} {{{sorted_values}}}"
         return f"{self.variable} {self.operator} {self.value}"
@@ -224,10 +229,9 @@ class RegressionRule(BaseModel):
     )
 
 
-#: Union of :class:`ClassificationRule` and :class:`RegressionRule`.
-#:
-#: Discriminated by the ``task_type`` field. Use this type when accepting a rule
-#: of either task type. Pydantic will select the correct model automatically.
+# Union of ClassificationRule and RegressionRule, discriminated by the
+# ``task_type`` field.  Use this alias when accepting a rule of either task
+# type; Pydantic will select the correct model automatically.
 DecisionTreeRule = Annotated[
     ClassificationRule | RegressionRule,
     Field(discriminator="task_type"),
@@ -354,17 +358,27 @@ class DecisionTreeResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_feature_importance_keys_in_features_used(self) -> DecisionTreeResult:
-        """Validate that all feature_importance keys are present in features_used.
+        """Validate that feature_importance keys exactly match features_used.
 
         Returns:
             DecisionTreeResult: The validated model instance.
 
         Raises:
-            ValueError: If any key in ``feature_importance`` is not in ``features_used``.
+            ValueError: If any key in ``feature_importance`` is missing from
+                ``features_used``, or any feature in ``features_used`` is missing
+                from ``feature_importance``.
         """
-        invalid = set(self.feature_importance) - set(self.features_used)
-        if invalid:
-            raise ValueError(f"feature_importance contains keys not in features_used: {sorted(invalid)}")
+        importance_keys = set(self.feature_importance)
+        features_used_set = set(self.features_used)
+        extra_in_importance = importance_keys - features_used_set
+        missing_from_importance = features_used_set - importance_keys
+        errors: list[str] = []
+        if extra_in_importance:
+            errors.append(f"feature_importance contains keys not in features_used: {sorted(extra_in_importance)}")
+        if missing_from_importance:
+            errors.append(f"features_used contains keys not in feature_importance: {sorted(missing_from_importance)}")
+        if errors:
+            raise ValueError("; ".join(errors))
         return self
 
     @model_validator(mode="after")
@@ -408,31 +422,50 @@ _SCALAR_OPS: dict[str, Callable[[Any, Any], bool]] = {
 
 
 def _apply_operator(
-    operator: PredicateOp,
+    op: PredicateOp,
     x: float | str,
     threshold: float | str | set[float] | set[str],
 ) -> bool:
     """Apply a comparison operator between a feature value and a threshold.
 
     Args:
-        operator (PredicateOp): The comparison operator to apply.
+        op (PredicateOp): The comparison operator to apply.
         x (float | str): The feature value to compare.
         threshold (float | str | set[float] | set[str]): The threshold or
             set of candidate values to compare against.
 
     Returns:
-        bool: Result of applying ``operator`` between ``x`` and ``threshold``.
+        bool: Result of applying ``op`` between ``x`` and ``threshold``.
 
     Raises:
-        ValueError: If ``operator`` is not a recognized ``PredicateOp`` value.
+        ValueError: If ``op`` is not a recognized ``PredicateOp`` value.
     """
-    result: bool
-    if operator in _SCALAR_OPS:
-        result = _SCALAR_OPS[operator](x, threshold)
-    elif operator == "in" and isinstance(threshold, set):
-        result = x in threshold
-    elif operator == "not in" and isinstance(threshold, set):
-        result = x not in threshold
-    else:
-        raise ValueError(f"Unexpected operator: {operator!r}")
-    return result
+    _validate_operator_threshold_types(op, threshold)
+    if op in _SCALAR_OPS:
+        return _SCALAR_OPS[op](x, threshold)
+    if op == "in" and isinstance(threshold, set):
+        return x in threshold
+    if op == "not in" and isinstance(threshold, set):
+        return x not in threshold
+    raise ValueError(f"Unexpected operator: {op!r}")
+
+
+def _validate_operator_threshold_types(
+    op: PredicateOp,
+    threshold: float | str | set[float] | set[str],
+) -> None:
+    """Raise TypeError when operator and threshold types are incompatible.
+
+    Args:
+        op (PredicateOp): The comparison operator to validate.
+        threshold (float | str | set[float] | set[str]): The threshold value
+            to validate against the operator.
+
+    Raises:
+        TypeError: If a scalar operator is paired with a set threshold, or a
+            membership operator is paired with a non-set threshold.
+    """
+    if op in _SCALAR_OPS and isinstance(threshold, set):
+        raise TypeError(f"Scalar operator '{op}' cannot compare against a set")
+    if op in {"in", "not in"} and not isinstance(threshold, set):
+        raise TypeError(f"Membership operator '{op}' requires a set threshold")

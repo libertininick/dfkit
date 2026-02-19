@@ -1,4 +1,4 @@
-"""Tests for the ClassificationRule, RegressionRule, and DecisionTreeResult Pydantic models."""
+"""Tests for the Predicate, ClassificationRule, RegressionRule, and DecisionTreeResult Pydantic models."""
 
 from __future__ import annotations
 
@@ -859,89 +859,92 @@ class TestDecisionTreeResult:
         with check:
             assert tree_result.leaf_count == 3
 
-    @pytest.mark.parametrize(
-        "tree_id",
-        ["classification", "regression"],
-    )
-    def test_result_serialization_roundtrip_produces_identical_object(
-        self,
-        tree_id: str,
-    ) -> None:
-        """Serializing a result to a dict and validating it back should produce an equal model.
+    def test_classification_result_serialization_roundtrip_produces_identical_object(self) -> None:
+        """Serializing a classification result to a dict and back should produce an equal model.
 
         Exercises model_dump followed by model_validate to confirm that no field
-        is lost or mutated during a round-trip, including nested rule objects
-        embedded in the rules list, for both classification and regression results.
-
-        Args:
-            tree_id (str): Identifies which fixture to build: ``"classification"`` or ``"regression"``.
+        is lost or mutated during a round-trip, including nested ClassificationRule
+        objects embedded in the rules list.
         """
         # Arrange
-        if tree_id == "classification":
-            original = DecisionTreeResult(
-                target="price_tier",
-                task_type="classification",
-                features_used=["sqft", "bedrooms", "neighbourhood_score"],
-                features_excluded=["listing_url (free-text)"],
-                rules=[
-                    ClassificationRule(
-                        task_type="classification",
-                        predicates=[
-                            Predicate(variable="sqft", operator="<=", value=800.0),
-                            Predicate(variable="neighbourhood_score", operator="<=", value=5.0),
-                        ],
-                        prediction="budget",
-                        samples=405,
-                        confidence=0.78,
-                    ),
-                    ClassificationRule(
-                        task_type="classification",
-                        predicates=[
-                            Predicate(variable="sqft", operator=">", value=800.0),
-                            Predicate(variable="bedrooms", operator=">=", value=3.0),
-                        ],
-                        prediction="premium",
-                        samples=317,
-                        confidence=0.88,
-                    ),
-                ],
-                feature_importance={"sqft": 0.55, "bedrooms": 0.30, "neighbourhood_score": 0.15},
-                metrics={"accuracy": 0.83},
-                sample_count=722,
-                depth=2,
-                leaf_count=2,
-            )
-        else:
-            original = DecisionTreeResult(
-                target="house_price",
-                task_type="regression",
-                features_used=["sqft", "bedrooms", "garage_spaces"],
-                features_excluded=["listing_id (unique identifier)"],
-                rules=[
-                    RegressionRule(
-                        task_type="regression",
-                        predicates=[Predicate(variable="sqft", operator="<=", value=1200.0)],
-                        prediction=285_000.0,
-                        samples=230,
-                        std=42_500.0,
-                    ),
-                    RegressionRule(
-                        task_type="regression",
-                        predicates=[
-                            Predicate(variable="sqft", operator=">", value=1200.0),
-                            Predicate(variable="bedrooms", operator=">=", value=3.0),
-                        ],
-                        prediction=520_000.0,
-                        samples=180,
-                        std=78_300.0,
-                    ),
-                ],
-                feature_importance={"sqft": 0.60, "bedrooms": 0.25, "garage_spaces": 0.15},
-                metrics={"r_squared": 0.81, "rmse": 55_200.0},
-                sample_count=410,
-                depth=2,
-                leaf_count=2,
-            )
+        original = DecisionTreeResult(
+            target="price_tier",
+            task_type="classification",
+            features_used=["sqft", "bedrooms", "neighbourhood_score"],
+            features_excluded=["listing_url (free-text)"],
+            rules=[
+                ClassificationRule(
+                    task_type="classification",
+                    predicates=[
+                        Predicate(variable="sqft", operator="<=", value=800.0),
+                        Predicate(variable="neighbourhood_score", operator="<=", value=5.0),
+                    ],
+                    prediction="budget",
+                    samples=405,
+                    confidence=0.78,
+                ),
+                ClassificationRule(
+                    task_type="classification",
+                    predicates=[
+                        Predicate(variable="sqft", operator=">", value=800.0),
+                        Predicate(variable="bedrooms", operator=">=", value=3.0),
+                    ],
+                    prediction="premium",
+                    samples=317,
+                    confidence=0.88,
+                ),
+            ],
+            feature_importance={"sqft": 0.55, "bedrooms": 0.30, "neighbourhood_score": 0.15},
+            metrics={"accuracy": 0.83},
+            sample_count=722,
+            depth=2,
+            leaf_count=2,
+        )
+
+        # Act
+        restored = DecisionTreeResult.model_validate(original.model_dump())
+
+        # Assert
+        assert restored == original
+
+    def test_regression_result_serialization_roundtrip_produces_identical_object(self) -> None:
+        """Serializing a regression result to a dict and back should produce an equal model.
+
+        Exercises model_dump followed by model_validate to confirm that no field
+        is lost or mutated during a round-trip, including nested RegressionRule
+        objects embedded in the rules list.
+        """
+        # Arrange
+        original = DecisionTreeResult(
+            target="house_price",
+            task_type="regression",
+            features_used=["sqft", "bedrooms", "garage_spaces"],
+            features_excluded=["listing_id (unique identifier)"],
+            rules=[
+                RegressionRule(
+                    task_type="regression",
+                    predicates=[Predicate(variable="sqft", operator="<=", value=1200.0)],
+                    prediction=285_000.0,
+                    samples=230,
+                    std=42_500.0,
+                ),
+                RegressionRule(
+                    task_type="regression",
+                    predicates=[
+                        Predicate(variable="sqft", operator=">", value=1200.0),
+                        Predicate(variable="bedrooms", operator=">=", value=3.0),
+                    ],
+                    prediction=520_000.0,
+                    samples=180,
+                    std=78_300.0,
+                ),
+            ],
+            feature_importance={"sqft": 0.60, "bedrooms": 0.25, "garage_spaces": 0.15},
+            metrics={"r_squared": 0.81, "rmse": 55_200.0},
+            sample_count=410,
+            depth=2,
+            leaf_count=2,
+        )
 
         # Act
         restored = DecisionTreeResult.model_validate(original.model_dump())
