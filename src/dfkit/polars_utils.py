@@ -73,7 +73,7 @@ def to_markdown_table(
 
     Use this to display DataFrames in a human-readable markdown format,
     optionally sampling rows or selecting specific columns. This function
-    temporarily modifies global ``pl.Config`` state to render the table.
+    temporarily modifies global `pl.Config` state to render the table.
     It is not thread-safe: concurrent calls from different threads may
     observe each other's configuration. Use only from a single thread
     (or protect calls with a lock).
