@@ -245,9 +245,7 @@ class RegressionRule(BaseModel):
     )
 
 
-# Union of ClassificationRule and RegressionRule, discriminated by the
-# `task_type` field.  Use this alias when accepting a rule of either task
-# type; Pydantic will select the correct model automatically.
+# Use this alias when accepting a rule of either task type; Pydantic will select the correct model automatically.
 type DecisionTreeRule = Annotated[
     ClassificationRule | RegressionRule,
     Field(discriminator="task_type"),
