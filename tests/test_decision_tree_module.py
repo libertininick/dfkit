@@ -1482,6 +1482,60 @@ class TestFilterFeatures:
         with check:
             assert excluded[0].reason == "single unique value"
 
+    def test_cardinality_just_below_threshold_is_kept(self) -> None:
+        """A categorical column with 89% unique values should pass the cardinality filter.
+
+        The threshold is 0.9 (exclusive). 89 unique values out of 100 rows
+        yields a ratio of 0.89, which is strictly below the threshold, so the
+        column must be kept.
+        """
+        # Arrange — 100 rows, 89 unique values → 89% unique ratio (just under 0.9)
+        unique_labels = [f"label_{i}" for i in range(89)]
+        # Fill remaining 11 rows by repeating the first label
+        category_values = unique_labels + ["label_0"] * 11
+        df = pl.DataFrame({
+            "near_unique_col": category_values,
+            "score": list(range(100)),
+        })
+
+        # Act
+        kept, excluded = _filter_features(df, ["near_unique_col", "score"])
+
+        # Assert
+        with check:
+            assert "near_unique_col" in kept, "89% unique ratio is below the 0.9 threshold and should be kept"
+        with check:
+            assert excluded == []
+
+    def test_cardinality_just_above_threshold_is_excluded(self) -> None:
+        """A categorical column with 91% unique values should be excluded as a likely identifier.
+
+        The threshold is 0.9 (exclusive). 91 unique values out of 100 rows
+        yields a ratio of 0.91, which exceeds the threshold, so the column
+        must be excluded.
+        """
+        # Arrange — 100 rows, 91 unique values → 91% unique ratio (just above 0.9)
+        unique_labels = [f"label_{i}" for i in range(91)]
+        # Fill remaining 9 rows by repeating the first label
+        category_values = unique_labels + ["label_0"] * 9
+        df = pl.DataFrame({
+            "near_unique_col": category_values,
+            "score": list(range(100)),
+        })
+
+        # Act
+        kept, excluded = _filter_features(df, ["near_unique_col", "score"])
+
+        # Assert
+        with check:
+            assert "near_unique_col" not in kept, "91% unique ratio exceeds the 0.9 threshold and should be excluded"
+        with check:
+            assert len(excluded) == 1
+        with check:
+            assert excluded[0].name == "near_unique_col"
+        with check:
+            assert "high cardinality" in excluded[0].reason
+
     def test_excludes_high_cardinality_strings(self) -> None:
         """A string column with more than 90% unique values should be excluded as a likely identifier."""
         # Arrange — 50 rows, all unique strings → 100% unique ratio, well above the 0.9 threshold
@@ -1944,6 +1998,31 @@ class TestEncodeTarget:
         with check:
             # Mapping keys should be consecutive integers starting at 0
             assert set(category_mapping.keys()) == {0, 1, 2, 3}
+
+    def test_integer_dtype_regression_target_upcast_to_float64(self) -> None:
+        """A regression target stored as `Int32` should be upcast to a `float64` numpy array.
+
+        This guards against a regression where integer-dtype columns were returned
+        with their original integer dtype instead of being promoted to `float64` for
+        sklearn compatibility.
+        """
+        # Arrange — sale quantity stored as Int32; regression task
+        target = pl.Series("sale_quantity", [10, 25, 7, 42, 33], dtype=pl.Int32)
+
+        # Act
+        encoded_array, category_mapping = _encode_target(target, "regression")
+
+        # Assert
+        with check:
+            assert category_mapping is None
+        with check:
+            assert encoded_array.dtype == np.float64, "Int32 regression target must be upcast to float64"
+        with check:
+            assert encoded_array[0] == pytest.approx(10.0)
+        with check:
+            assert encoded_array[1] == pytest.approx(25.0)
+        with check:
+            assert encoded_array[4] == pytest.approx(33.0)
 
 
 # ---------------------------------------------------------------------------
@@ -2905,11 +2984,13 @@ class TestExtractRules:
             task_type="classification",
         )
 
-        # Assert — numeric predicates must use "<=" or ">"
+        # Assert — predicates on numeric features must use "<=" or ">"
+        numeric_feature_names = {"credit_score", "loan_amount"}
         numeric_operators: set[str] = set()
         for rule in rules:
             for predicate in rule.predicates:
-                numeric_operators.add(predicate.operator)
+                if predicate.variable in numeric_feature_names:
+                    numeric_operators.add(predicate.operator)
 
         with check:
             assert len(numeric_operators) > 0
@@ -3440,16 +3521,53 @@ class TestBuildDecisionTreeResult:
                 task_type=None,
             )
 
-    def test_max_depth_capped_at_six(self) -> None:
-        """Passing `max_depth=10` should produce a tree with depth at most 6.
+    def test_error_max_depth_above_maximum(self) -> None:
+        """Passing `max_depth=10` should raise a `ValueError` citing the valid range."""
+        # Arrange
+        df = pl.DataFrame({
+            "score": [85.0, 90.0, 75.0, 60.0, 55.0, 70.0, 80.0, 65.0],
+            "grade": ["B", "A", "C", "D", "F", "C", "B", "D"],
+        })
+
+        # Act / Assert
+        with pytest.raises(ValueError, match="max_depth"):
+            _build_decision_tree_result(
+                df,
+                "grade",
+                features=["score"],
+                max_depth=10,
+                min_samples_leaf=2,
+                task_type=None,
+            )
+
+    def test_error_max_depth_below_minimum(self) -> None:
+        """Passing `max_depth=0` should raise a `ValueError` citing the valid range."""
+        # Arrange
+        df = pl.DataFrame({
+            "score": [85.0, 90.0, 75.0, 60.0, 55.0, 70.0, 80.0, 65.0],
+            "grade": ["B", "A", "C", "D", "F", "C", "B", "D"],
+        })
+
+        # Act / Assert
+        with pytest.raises(ValueError, match="max_depth"):
+            _build_decision_tree_result(
+                df,
+                "grade",
+                features=["score"],
+                max_depth=0,
+                min_samples_leaf=2,
+                task_type=None,
+            )
+
+    def test_max_depth_at_maximum_accepted(self) -> None:
+        """Passing `max_depth=6` (the maximum) should succeed without error.
 
         Uses a single strongly predictive feature to ensure the tree can grow
-        deep enough to test the cap while avoiding multi-feature importance
-        rounding issues.
+        deep enough while avoiding multi-feature importance rounding issues.
         """
         # Arrange — generate 200 samples with a single continuous feature; using one
         # feature guarantees importance sums cleanly to 1.0 and the tree will
-        # grow towards depth 6 when given max_depth=10.
+        # grow towards depth 6.
         rng = np.random.default_rng(31)
         n_rows = 200
         score = rng.uniform(0, 100, n_rows).tolist()
@@ -3465,7 +3583,7 @@ class TestBuildDecisionTreeResult:
             df,
             "grade",
             features=["score"],
-            max_depth=10,
+            max_depth=6,
             min_samples_leaf=5,
             task_type=None,
         )
@@ -3502,9 +3620,9 @@ class TestBuildDecisionTreeResult:
             task_type=None,
         )
 
-        # Assert — should succeed without error; null rows in features are tolerated
+        # Assert — null rows in features must not drop rows; all n_rows are used for fitting
         with check:
-            assert result.sample_count > 0
+            assert result.sample_count == n_rows, "null feature values must not drop rows from training"
 
     def test_drops_null_target_rows(self) -> None:
         """Rows with null target values should be excluded from training, reducing sample count."""

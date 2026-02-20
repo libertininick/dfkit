@@ -912,13 +912,20 @@ def _fit_tree(
         feature_matrix (np.ndarray): 2-D feature matrix with shape `(n_samples, n_features)`.
         target_array (np.ndarray): 1-D target vector with shape `(n_samples,)`.
         task_type (DecisionTreeTask): Whether to fit a classifier or regressor.
-        max_depth (int): Maximum depth of the tree.
+        max_depth (int): Maximum depth of the tree. Must be between
+            `_MIN_TREE_DEPTH` and `_MAX_TREE_DEPTH` (1 to 6), inclusive.
         min_samples_leaf (int): Minimum number of samples required at a leaf node.
         random_state (int | None): Random seed for reproducibility.
 
     Returns:
         DecisionTree: The fitted tree estimator.
+
+    Raises:
+        ValueError: If `max_depth` is outside the valid range
+            `[_MIN_TREE_DEPTH, _MAX_TREE_DEPTH]`.
     """
+    if not (_MIN_TREE_DEPTH <= max_depth <= _MAX_TREE_DEPTH):
+        raise ValueError(f"max_depth must be between {_MIN_TREE_DEPTH} and {_MAX_TREE_DEPTH}, got {max_depth}.")
     tree_cls = DecisionTreeClassifier if task_type == "classification" else DecisionTreeRegressor
     tree = tree_cls(
         max_depth=max_depth,
@@ -1287,6 +1294,7 @@ def _compute_feature_importance(
 # ---------------------------------------------------------------------------
 
 
+_MIN_TREE_DEPTH: int = 1  # Lower bound on tree depth accepted by the public API.
 _MAX_TREE_DEPTH: int = 6  # Caps tree depth to prevent overfitting and keep rules human-readable.
 _AUTO_MIN_SAMPLES_FRACTION: float = 0.02  # Scales the leaf floor with dataset size: 2% of n_rows.
 _AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of dataset size.
@@ -1313,7 +1321,8 @@ def _build_decision_tree_result(
         target (str): Name of the target column.
         features (list[str] | None): Feature column names to consider. When
             `None`, all columns except `target` are used.
-        max_depth (int): Maximum tree depth; clamped to `_MAX_TREE_DEPTH`.
+        max_depth (int): Maximum tree depth; must be between 1 and
+            `_MAX_TREE_DEPTH` (inclusive).
         min_samples_leaf (int): Minimum samples required at a leaf node.
             Auto-adjusted upward when the dataset is large.
         task_type (str | None): `"classification"`, `"regression"`, or `None`
@@ -1426,7 +1435,8 @@ def _fit_and_assemble_result(
         kept_columns (list[str]): Feature column names that survived filtering.
         excluded_features (list[_ExcludedFeature]): Excluded features with reasons.
         n_rows (int): Number of rows in `df_clean`.
-        max_depth (int): Maximum tree depth; clamped internally to `_MAX_TREE_DEPTH`.
+        max_depth (int): Maximum tree depth; must be between 1 and
+            `_MAX_TREE_DEPTH` (inclusive).
         min_samples_leaf (int): User-supplied minimum samples per leaf.
         task_type (str | None): Task type override or `None` for auto-detection.
         random_state (int | None): Random seed for the sklearn tree estimator.
@@ -1438,14 +1448,13 @@ def _fit_and_assemble_result(
     feature_matrix, feature_encoders = _encode_features(df_clean, kept_columns)
     target_array, target_mapping = _encode_target(df_clean[target], detected_task_type)
 
-    clamped_depth = min(max_depth, _MAX_TREE_DEPTH)
     effective_min_samples = _compute_effective_min_samples(n_rows, min_samples_leaf)
 
     fitted_tree = _fit_tree(
         feature_matrix,
         target_array,
         task_type=detected_task_type,
-        max_depth=clamped_depth,
+        max_depth=max_depth,
         min_samples_leaf=effective_min_samples,
         random_state=random_state,
     )
