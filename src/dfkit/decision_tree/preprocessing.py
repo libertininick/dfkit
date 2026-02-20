@@ -12,7 +12,7 @@ from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
 from dfkit.decision_tree.models import ColumnType, DecisionTreeTask
 
 # ---------------------------------------------------------------------------
-# Private helpers -- Column type classification
+# Module-level constants
 # ---------------------------------------------------------------------------
 
 _DTYPE_TO_COLUMN_TYPE: dict[type[pl.DataType] | pl.DataType, ColumnType] = {
@@ -35,8 +35,61 @@ _DTYPE_TO_COLUMN_TYPE: dict[type[pl.DataType] | pl.DataType, ColumnType] = {
     pl.Duration: "duration",
 }
 
+_HIGH_CARDINALITY_RATIO: float = 0.9
+THRESHOLD_DECIMAL_PLACES: int = 4  # Decimal places for rounding numeric split thresholds in predicates.
 
-def _classify_column(dtype: pl.DataType) -> ColumnType:
+_INTEGER_DTYPES: frozenset[type[pl.DataType]] = frozenset({
+    pl.Int8,
+    pl.Int16,
+    pl.Int32,
+    pl.Int64,
+    pl.UInt8,
+    pl.UInt16,
+    pl.UInt32,
+    pl.UInt64,
+})
+_MAX_CLASSIFICATION_UNIQUE_COUNT: int = 20
+_MAX_CLASSIFICATION_UNIQUE_RATIO: float = 0.05
+
+# ---------------------------------------------------------------------------
+# Public interface -- Column type classification
+# ---------------------------------------------------------------------------
+
+
+class ExcludedFeature(NamedTuple):
+    """A feature column that was excluded from preprocessing, with the reason.
+
+    Attributes:
+        name (str): The column name that was excluded.
+        reason (str): Human-readable explanation for the exclusion.
+    """
+
+    name: str
+    reason: str
+
+
+@dataclass
+class FeatureEncoder:
+    """Metadata describing how one feature column was encoded to a numpy array.
+
+    Attributes:
+        column_name (str): The source column name in the original DataFrame.
+        column_type (ColumnType): The broad type category assigned to the column.
+        category_mapping (dict[int, str] | None): Maps integer codes back to
+            the original category labels.  `None` for non-categorical columns.
+    """
+
+    column_name: str
+    column_type: ColumnType
+    category_mapping: dict[int, str] | None = field(default=None)
+
+
+# ---------------------------------------------------------------------------
+# Public interface -- Column classification and feature filtering
+# ---------------------------------------------------------------------------
+
+
+def classify_column(dtype: pl.DataType) -> ColumnType:
     """Classify a Polars column dtype into a broad feature category.
 
     The lookup map uses bare class references as keys (e.g. `pl.Datetime`),
@@ -63,30 +116,10 @@ def _classify_column(dtype: pl.DataType) -> ColumnType:
     return "excluded"
 
 
-# ---------------------------------------------------------------------------
-# Private helpers -- Feature filtering
-# ---------------------------------------------------------------------------
-
-_HIGH_CARDINALITY_RATIO: float = 0.9
-_THRESHOLD_DECIMAL_PLACES: int = 4  # Decimal places for rounding numeric split thresholds in predicates.
-
-
-class _ExcludedFeature(NamedTuple):
-    """A feature column that was excluded from preprocessing, with the reason.
-
-    Attributes:
-        name (str): The column name that was excluded.
-        reason (str): Human-readable explanation for the exclusion.
-    """
-
-    name: str
-    reason: str
-
-
-def _filter_features(
+def filter_features(
     df: pl.DataFrame,
     feature_columns: list[str],
-) -> tuple[list[str], list[_ExcludedFeature]]:
+) -> tuple[list[str], list[ExcludedFeature]]:
     """Partition feature columns into kept and excluded sets.
 
     Columns are excluded when they have an unsupported dtype, contain only
@@ -98,7 +131,7 @@ def _filter_features(
         feature_columns (list[str]): Column names to evaluate.
 
     Returns:
-        tuple[list[str], list[_ExcludedFeature]]: A 2-tuple of
+        tuple[list[str], list[ExcludedFeature]]: A 2-tuple of
             `(kept_names, excluded_features)` where *kept_names* is the
             ordered list of columns that passed all filters and
             *excluded_features* holds the dropped columns together with their
@@ -106,82 +139,24 @@ def _filter_features(
     """
     row_count = len(df)
     kept: list[str] = []
-    excluded: list[_ExcludedFeature] = []
+    excluded: list[ExcludedFeature] = []
 
     for col_name in feature_columns:
         exclusion_reason = _get_exclusion_reason(df[col_name], row_count)
         if exclusion_reason is not None:
-            excluded.append(_ExcludedFeature(name=col_name, reason=exclusion_reason))
+            excluded.append(ExcludedFeature(name=col_name, reason=exclusion_reason))
         else:
             kept.append(col_name)
 
     return kept, excluded
 
 
-def _get_exclusion_reason(series: pl.Series, row_count: int) -> str | None:
-    """Return the exclusion reason for a column, or `None` if it should be kept.
-
-    Args:
-        series (pl.Series): The column to inspect.
-        row_count (int): Total number of rows in the containing DataFrame.
-
-    Returns:
-        str | None: A human-readable reason string if the column should be
-            excluded, or `None` if the column passes all filters.
-    """
-    column_type = _classify_column(series.dtype)
-
-    if column_type == "excluded":
-        return "unsupported dtype"
-    if series.is_null().all():
-        return "all values are null"
-
-    unique_count = series.n_unique()
-    if unique_count <= 1:
-        return "single unique value"
-    if column_type == "categorical" and row_count > 0 and unique_count / row_count > _HIGH_CARDINALITY_RATIO:
-        return "high cardinality: likely unique identifier"
-
-    return None
-
-
 # ---------------------------------------------------------------------------
-# Private helpers -- Category mapping
+# Public interface -- Task type detection
 # ---------------------------------------------------------------------------
 
 
-def _make_category_mapping(labels: Any) -> dict[int, str]:
-    """Build a `{code: label}` mapping from an ordered sequence of category labels.
-
-    Args:
-        labels (Any): An iterable of category labels (e.g. numpy array or list)
-            ordered by their ordinal code, starting at 0.
-
-    Returns:
-        dict[int, str]: Mapping of integer ordinal code to string label.
-    """
-    return dict(enumerate(str(label) for label in labels))
-
-
-# ---------------------------------------------------------------------------
-# Private helpers -- Task type detection
-# ---------------------------------------------------------------------------
-
-_INTEGER_DTYPES: frozenset[type[pl.DataType]] = frozenset({
-    pl.Int8,
-    pl.Int16,
-    pl.Int32,
-    pl.Int64,
-    pl.UInt8,
-    pl.UInt16,
-    pl.UInt32,
-    pl.UInt64,
-})
-_MAX_CLASSIFICATION_UNIQUE_COUNT: int = 20
-_MAX_CLASSIFICATION_UNIQUE_RATIO: float = 0.05
-
-
-def _detect_task_type(
+def detect_task_type(
     series: pl.Series,
     task_type_override: str | None,
 ) -> DecisionTreeTask:
@@ -212,55 +187,18 @@ def _detect_task_type(
     return "regression"
 
 
-def _integer_series_is_classification(series: pl.Series) -> bool:
-    """Return `True` if an integer series has low enough cardinality for classification.
-
-    Args:
-        series (pl.Series): An integer-dtype Polars Series.
-
-    Returns:
-        bool: `True` when the series has at most
-            `_MAX_CLASSIFICATION_UNIQUE_COUNT` unique values or when the
-            ratio of unique values to non-null values is below
-            `_MAX_CLASSIFICATION_UNIQUE_RATIO`.
-    """
-    non_null_series = series.drop_nulls()
-    unique_count = non_null_series.n_unique()
-    non_null_count = non_null_series.len()
-
-    if unique_count <= _MAX_CLASSIFICATION_UNIQUE_COUNT:
-        return True
-    return non_null_count > 0 and unique_count / non_null_count < _MAX_CLASSIFICATION_UNIQUE_RATIO
-
-
 # ---------------------------------------------------------------------------
-# Private helpers -- Feature and target encoding
+# Public interface -- Feature and target encoding
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class _FeatureEncoder:
-    """Metadata describing how one feature column was encoded to a numpy array.
-
-    Attributes:
-        column_name (str): The source column name in the original DataFrame.
-        column_type (ColumnType): The broad type category assigned to the column.
-        category_mapping (dict[int, str] | None): Maps integer codes back to
-            the original category labels.  `None` for non-categorical columns.
-    """
-
-    column_name: str
-    column_type: ColumnType
-    category_mapping: dict[int, str] | None = field(default=None)
-
-
-def _encode_features(
+def encode_features(
     df: pl.DataFrame,
     feature_columns: list[str],
-) -> tuple[np.ndarray, list[_FeatureEncoder]]:
+) -> tuple[np.ndarray, list[FeatureEncoder]]:
     """Encode DataFrame feature columns into a 2-D float64 numpy array.
 
-    Each column is converted according to its :func:`_classify_column` type:
+    Each column is converted according to its :func:`classify_column` type:
 
     - `"numeric"` → cast to `float64` (Polars nulls become `NaN`).
     - `"boolean"` → cast via `Int8` to `float64`.
@@ -273,21 +211,21 @@ def _encode_features(
         feature_columns (list[str]): Ordered list of column names to encode.
 
     Returns:
-        tuple[np.ndarray, list[_FeatureEncoder]]: A 2-tuple of
+        tuple[np.ndarray, list[FeatureEncoder]]: A 2-tuple of
             `(feature_matrix, encoders)` where *feature_matrix* has shape
             `(n_rows, n_features)` and *encoders* is a parallel list of
-            `_FeatureEncoder` objects (one per column).
+            `FeatureEncoder` objects (one per column).
     """
     column_arrays: list[np.ndarray] = []
-    encoders: list[_FeatureEncoder] = []
+    encoders: list[FeatureEncoder] = []
 
     for col_name in feature_columns:
         series = df[col_name]
-        column_type = _classify_column(series.dtype)
+        column_type = classify_column(series.dtype)
         column_array, category_mapping = _encode_single_feature(series, column_type)
         column_arrays.append(column_array)
         encoders.append(
-            _FeatureEncoder(column_name=col_name, column_type=column_type, category_mapping=category_mapping)
+            FeatureEncoder(column_name=col_name, column_type=column_type, category_mapping=category_mapping)
         )
 
     # Return a zero-width matrix when no features survived filtering.
@@ -295,7 +233,7 @@ def _encode_features(
     return feature_matrix, encoders
 
 
-def _encode_target(
+def encode_target(
     series: pl.Series,
     task_type: DecisionTreeTask,
 ) -> tuple[np.ndarray, dict[int, str] | None]:
@@ -332,6 +270,72 @@ def _encode_target(
     encoded_array = label_encoder.fit_transform(raw_array).astype(np.float64)
     category_mapping = _make_category_mapping(label_encoder.classes_)
     return encoded_array, category_mapping
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_exclusion_reason(series: pl.Series, row_count: int) -> str | None:
+    """Return the exclusion reason for a column, or `None` if it should be kept.
+
+    Args:
+        series (pl.Series): The column to inspect.
+        row_count (int): Total number of rows in the containing DataFrame.
+
+    Returns:
+        str | None: A human-readable reason string if the column should be
+            excluded, or `None` if the column passes all filters.
+    """
+    column_type = classify_column(series.dtype)
+
+    if column_type == "excluded":
+        return "unsupported dtype"
+    if series.is_null().all():
+        return "all values are null"
+
+    unique_count = series.n_unique()
+    if unique_count <= 1:
+        return "single unique value"
+    if column_type == "categorical" and row_count > 0 and unique_count / row_count > _HIGH_CARDINALITY_RATIO:
+        return "high cardinality: likely unique identifier"
+
+    return None
+
+
+def _make_category_mapping(labels: Any) -> dict[int, str]:
+    """Build a `{code: label}` mapping from an ordered sequence of category labels.
+
+    Args:
+        labels (Any): An iterable of category labels (e.g. numpy array or list)
+            ordered by their ordinal code, starting at 0.
+
+    Returns:
+        dict[int, str]: Mapping of integer ordinal code to string label.
+    """
+    return dict(enumerate(str(label) for label in labels))
+
+
+def _integer_series_is_classification(series: pl.Series) -> bool:
+    """Return `True` if an integer series has low enough cardinality for classification.
+
+    Args:
+        series (pl.Series): An integer-dtype Polars Series.
+
+    Returns:
+        bool: `True` when the series has at most
+            `_MAX_CLASSIFICATION_UNIQUE_COUNT` unique values or when the
+            ratio of unique values to non-null values is below
+            `_MAX_CLASSIFICATION_UNIQUE_RATIO`.
+    """
+    non_null_series = series.drop_nulls()
+    unique_count = non_null_series.n_unique()
+    non_null_count = non_null_series.len()
+
+    if unique_count <= _MAX_CLASSIFICATION_UNIQUE_COUNT:
+        return True
+    return non_null_count > 0 and unique_count / non_null_count < _MAX_CLASSIFICATION_UNIQUE_RATIO
 
 
 def _encode_single_feature(

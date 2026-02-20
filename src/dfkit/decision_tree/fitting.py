@@ -19,14 +19,18 @@ from dfkit.decision_tree.models import (
     RegressionRule,
 )
 from dfkit.decision_tree.preprocessing import (
-    _THRESHOLD_DECIMAL_PLACES,
-    _detect_task_type,
-    _encode_features,
-    _encode_target,
-    _ExcludedFeature,
-    _FeatureEncoder,
-    _filter_features,
+    THRESHOLD_DECIMAL_PLACES,
+    ExcludedFeature,
+    FeatureEncoder,
+    detect_task_type,
+    encode_features,
+    encode_target,
+    filter_features,
 )
+
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
 
 _MIN_TREE_DEPTH: int = 1  # Lower bound on tree depth accepted by the public API.
 _MAX_TREE_DEPTH: int = 6  # Caps tree depth to prevent overfitting and keep rules human-readable.
@@ -35,11 +39,11 @@ _AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of dat
 
 
 # ---------------------------------------------------------------------------
-# Private helpers -- Tree fitting
+# Public interface -- Tree fitting
 # ---------------------------------------------------------------------------
 
 
-def _fit_tree(
+def fit_tree(
     feature_matrix: np.ndarray,
     target_array: np.ndarray,
     *,
@@ -79,16 +83,16 @@ def _fit_tree(
 
 
 # ---------------------------------------------------------------------------
-# Private helpers -- Rule extraction
+# Public interface -- Rule extraction
 # ---------------------------------------------------------------------------
 
 
-def _extract_rules(
+def extract_rules(
     tree: DecisionTree,
     feature_matrix: np.ndarray,
     target_array: np.ndarray,
     *,
-    feature_encoders: list[_FeatureEncoder],
+    feature_encoders: list[FeatureEncoder],
     target_mapping: dict[int, str] | None,
     task_type: DecisionTreeTask,
 ) -> list[ClassificationRule] | list[RegressionRule]:
@@ -110,7 +114,7 @@ def _extract_rules(
         tree (DecisionTree): A fitted sklearn tree.
         feature_matrix (np.ndarray): 2-D feature matrix used to fit the tree.
         target_array (np.ndarray): 1-D target vector used to fit the tree.
-        feature_encoders (list[_FeatureEncoder]): Parallel list of encoders
+        feature_encoders (list[FeatureEncoder]): Parallel list of encoders
             describing how each feature column was encoded.
         target_mapping (dict[int, str] | None): Maps integer codes back to
             class labels for classification; `None` for regression.
@@ -135,11 +139,151 @@ def _extract_rules(
     return rules
 
 
+# ---------------------------------------------------------------------------
+# Public interface -- Metrics and feature importance
+# ---------------------------------------------------------------------------
+
+
+def compute_metrics(
+    tree: DecisionTree,
+    feature_matrix: np.ndarray,
+    target_array: np.ndarray,
+    *,
+    task_type: DecisionTreeTask,
+) -> dict[str, float]:
+    """Compute evaluation metrics for a fitted decision tree.
+
+    Args:
+        tree (DecisionTree): A fitted sklearn tree.
+        feature_matrix (np.ndarray): 2-D feature matrix with shape `(n_samples, n_features)`.
+        target_array (np.ndarray): 1-D target vector with shape `(n_samples,)`.
+        task_type (DecisionTreeTask): Whether the tree is a classifier or regressor.
+
+    Returns:
+        dict[str, float]: For classification: `{"accuracy": <float>}`.
+            For regression: `{"r_squared": <float>, "rmse": <float>}`.
+    """
+    predictions = tree.predict(feature_matrix)
+    if task_type == "classification":
+        return {"accuracy": float(accuracy_score(target_array, predictions))}
+    return {
+        "r_squared": float(r2_score(target_array, predictions)),
+        "rmse": float(np.sqrt(mean_squared_error(target_array, predictions))),
+    }
+
+
+def compute_feature_importance(
+    tree: DecisionTree,
+    feature_names: list[str],
+) -> dict[str, float]:
+    """Build a feature importance mapping from a fitted decision tree.
+
+    Only features with non-zero importance are included. The remaining
+    importances are renormalized to sum to 1.0 after excluding zero-importance
+    features.
+
+    Args:
+        tree (DecisionTree): A fitted sklearn tree.
+        feature_names (list[str]): Feature names parallel to `tree.feature_importances_`.
+
+    Returns:
+        dict[str, float]: Mapping of feature name to rounded importance score,
+            sorted in descending order of importance. Keys are exactly those
+            features with importance > 0.
+    """
+    importances = tree.feature_importances_
+    paired = [(name, round(float(importance), 4)) for name, importance in zip(feature_names, importances, strict=True)]
+    filtered = [(name, importance) for name, importance in paired if importance > 0.0]
+    filtered.sort(key=lambda item: item[1], reverse=True)
+    total_rounded = sum(importance for _, importance in filtered)
+    renormalized = [(name, round(importance / total_rounded, 4)) for name, importance in filtered]
+    if renormalized:
+        others_sum = sum(importance for _, importance in renormalized[:-1])
+        last_name = renormalized[-1][0]
+        renormalized[-1] = (last_name, round(1.0 - others_sum, 4))
+    return dict(renormalized)
+
+
+# ---------------------------------------------------------------------------
+# Public interface -- Pipeline orchestration
+# ---------------------------------------------------------------------------
+
+
+def build_decision_tree_result(
+    df: pl.DataFrame,
+    target: str,
+    *,
+    features: list[str] | None,
+    max_depth: int,
+    min_samples_leaf: int,
+    task_type: str | None,
+    random_state: int | None = None,
+) -> DecisionTreeResult:
+    """Orchestrate the full decision tree fitting pipeline.
+
+    Validates inputs, preprocesses features and target, fits a decision tree,
+    extracts rules, computes metrics and feature importance, then assembles
+    and returns a `DecisionTreeResult`.
+
+    Args:
+        df (pl.DataFrame): The source DataFrame containing features and target.
+        target (str): Name of the target column.
+        features (list[str] | None): Feature column names to consider. When
+            `None`, all columns except `target` are used.
+        max_depth (int): Maximum tree depth; must be between 1 and
+            `_MAX_TREE_DEPTH` (inclusive).
+        min_samples_leaf (int): Minimum samples required at a leaf node.
+            Auto-adjusted upward when the dataset is large.
+        task_type (str | None): `"classification"`, `"regression"`, or `None`
+            for automatic detection.
+        random_state (int | None): Random seed passed to the sklearn tree for
+            reproducibility.  `None` means non-deterministic.
+
+    Returns:
+        DecisionTreeResult: The fitted tree result.
+
+    Raises:
+        ValueError: On any validation failure (missing columns, degenerate
+            target, no valid features, or insufficient samples).
+    """
+    _validate_inputs(df, target, features)
+
+    feature_columns = features if features is not None else [col for col in df.columns if col != target]
+
+    # Drop null-target rows before feature filtering so the cardinality ratio
+    # uses the same denominator as the data the tree will be fitted on.
+    df_clean = _prepare_clean_dataframe(df, target, min_samples_leaf)
+
+    kept_columns, excluded_features = filter_features(df_clean, feature_columns)
+
+    if not kept_columns:
+        excluded_labels = [f"{ef.name} ({ef.reason})" for ef in excluded_features]
+        raise ValueError(f"No valid feature columns remain after filtering. Excluded: {excluded_labels}")
+
+    n_rows = len(df_clean)
+    return _fit_and_assemble_result(
+        df_clean=df_clean,
+        target=target,
+        kept_columns=kept_columns,
+        excluded_features=excluded_features,
+        n_rows=n_rows,
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
+        task_type=task_type,
+        random_state=random_state,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
 def _walk_tree(
     *,
     tree: DecisionTree,
     target_array: np.ndarray,
-    feature_encoders: list[_FeatureEncoder],
+    feature_encoders: list[FeatureEncoder],
     target_mapping: dict[int, str] | None,
     task_type: DecisionTreeTask,
     leaf_assignments: np.ndarray | None,
@@ -152,7 +296,7 @@ def _walk_tree(
     Args:
         tree (DecisionTree): A fitted sklearn tree.
         target_array (np.ndarray): 1-D target vector used to fit the tree.
-        feature_encoders (list[_FeatureEncoder]): Parallel list of encoders.
+        feature_encoders (list[FeatureEncoder]): Parallel list of encoders.
         target_mapping (dict[int, str] | None): Class label mapping for classification.
         task_type (DecisionTreeTask): Whether the tree is a classifier or regressor.
         leaf_assignments (np.ndarray | None): Per-sample leaf node IDs from
@@ -199,7 +343,7 @@ def _walk_tree(
     _walk_tree(**shared_kwargs, node_id=right_child, path_predicates=[*path_predicates, right_predicate])
 
 
-def _build_split_predicates(encoder: _FeatureEncoder, threshold: float) -> tuple[Predicate, Predicate]:
+def _build_split_predicates(encoder: FeatureEncoder, threshold: float) -> tuple[Predicate, Predicate]:
     """Build the left and right branch predicates for a decision tree split.
 
     For categorical features, the split threshold is decoded to a set of
@@ -212,7 +356,7 @@ def _build_split_predicates(encoder: _FeatureEncoder, threshold: float) -> tuple
     left branch and `">"` for the right branch) are created.
 
     Args:
-        encoder (_FeatureEncoder): Encoder metadata for the feature being split.
+        encoder (FeatureEncoder): Encoder metadata for the feature being split.
         threshold (float): Raw sklearn split threshold value.
 
     Returns:
@@ -228,7 +372,7 @@ def _build_split_predicates(encoder: _FeatureEncoder, threshold: float) -> tuple
         right_predicate = Predicate(variable=feature_name, operator="in", value=right_labels)
         return left_predicate, right_predicate
 
-    rounded_threshold = round(float(threshold), _THRESHOLD_DECIMAL_PLACES)
+    rounded_threshold = round(float(threshold), THRESHOLD_DECIMAL_PLACES)
     left_predicate = Predicate(variable=feature_name, operator="<=", value=rounded_threshold)
     right_predicate = Predicate(variable=feature_name, operator=">", value=rounded_threshold)
     return left_predicate, right_predicate
@@ -366,141 +510,6 @@ def _build_regression_rule(
     )
 
 
-# ---------------------------------------------------------------------------
-# Private helpers -- Metrics and feature importance
-# ---------------------------------------------------------------------------
-
-
-def _compute_metrics(
-    tree: DecisionTree,
-    feature_matrix: np.ndarray,
-    target_array: np.ndarray,
-    *,
-    task_type: DecisionTreeTask,
-) -> dict[str, float]:
-    """Compute evaluation metrics for a fitted decision tree.
-
-    Args:
-        tree (DecisionTree): A fitted sklearn tree.
-        feature_matrix (np.ndarray): 2-D feature matrix with shape `(n_samples, n_features)`.
-        target_array (np.ndarray): 1-D target vector with shape `(n_samples,)`.
-        task_type (DecisionTreeTask): Whether the tree is a classifier or regressor.
-
-    Returns:
-        dict[str, float]: For classification: `{"accuracy": <float>}`.
-            For regression: `{"r_squared": <float>, "rmse": <float>}`.
-    """
-    predictions = tree.predict(feature_matrix)
-    if task_type == "classification":
-        return {"accuracy": float(accuracy_score(target_array, predictions))}
-    return {
-        "r_squared": float(r2_score(target_array, predictions)),
-        "rmse": float(np.sqrt(mean_squared_error(target_array, predictions))),
-    }
-
-
-def _compute_feature_importance(
-    tree: DecisionTree,
-    feature_names: list[str],
-) -> dict[str, float]:
-    """Build a feature importance mapping from a fitted decision tree.
-
-    Only features with non-zero importance are included. The remaining
-    importances are renormalized to sum to 1.0 after excluding zero-importance
-    features.
-
-    Args:
-        tree (DecisionTree): A fitted sklearn tree.
-        feature_names (list[str]): Feature names parallel to `tree.feature_importances_`.
-
-    Returns:
-        dict[str, float]: Mapping of feature name to rounded importance score,
-            sorted in descending order of importance. Keys are exactly those
-            features with importance > 0.
-    """
-    importances = tree.feature_importances_
-    paired = [(name, round(float(importance), 4)) for name, importance in zip(feature_names, importances, strict=True)]
-    filtered = [(name, importance) for name, importance in paired if importance > 0.0]
-    filtered.sort(key=lambda item: item[1], reverse=True)
-    total_rounded = sum(importance for _, importance in filtered)
-    renormalized = [(name, round(importance / total_rounded, 4)) for name, importance in filtered]
-    if renormalized:
-        others_sum = sum(importance for _, importance in renormalized[:-1])
-        last_name = renormalized[-1][0]
-        renormalized[-1] = (last_name, round(1.0 - others_sum, 4))
-    return dict(renormalized)
-
-
-# ---------------------------------------------------------------------------
-# Private helpers -- Pipeline orchestration
-# ---------------------------------------------------------------------------
-
-
-def _build_decision_tree_result(
-    df: pl.DataFrame,
-    target: str,
-    *,
-    features: list[str] | None,
-    max_depth: int,
-    min_samples_leaf: int,
-    task_type: str | None,
-    random_state: int | None = None,
-) -> DecisionTreeResult:
-    """Orchestrate the full decision tree fitting pipeline.
-
-    Validates inputs, preprocesses features and target, fits a decision tree,
-    extracts rules, computes metrics and feature importance, then assembles
-    and returns a `DecisionTreeResult`.
-
-    Args:
-        df (pl.DataFrame): The source DataFrame containing features and target.
-        target (str): Name of the target column.
-        features (list[str] | None): Feature column names to consider. When
-            `None`, all columns except `target` are used.
-        max_depth (int): Maximum tree depth; must be between 1 and
-            `_MAX_TREE_DEPTH` (inclusive).
-        min_samples_leaf (int): Minimum samples required at a leaf node.
-            Auto-adjusted upward when the dataset is large.
-        task_type (str | None): `"classification"`, `"regression"`, or `None`
-            for automatic detection.
-        random_state (int | None): Random seed passed to the sklearn tree for
-            reproducibility.  `None` means non-deterministic.
-
-    Returns:
-        DecisionTreeResult: The fitted tree result.
-
-    Raises:
-        ValueError: On any validation failure (missing columns, degenerate
-            target, no valid features, or insufficient samples).
-    """
-    _validate_inputs(df, target, features)
-
-    feature_columns = features if features is not None else [col for col in df.columns if col != target]
-
-    # Drop null-target rows before feature filtering so the cardinality ratio
-    # uses the same denominator as the data the tree will be fitted on.
-    df_clean = _prepare_clean_dataframe(df, target, min_samples_leaf)
-
-    kept_columns, excluded_features = _filter_features(df_clean, feature_columns)
-
-    if not kept_columns:
-        excluded_labels = [f"{ef.name} ({ef.reason})" for ef in excluded_features]
-        raise ValueError(f"No valid feature columns remain after filtering. Excluded: {excluded_labels}")
-
-    n_rows = len(df_clean)
-    return _fit_and_assemble_result(
-        df_clean=df_clean,
-        target=target,
-        kept_columns=kept_columns,
-        excluded_features=excluded_features,
-        n_rows=n_rows,
-        max_depth=max_depth,
-        min_samples_leaf=min_samples_leaf,
-        task_type=task_type,
-        random_state=random_state,
-    )
-
-
 def _validate_inputs(
     df: pl.DataFrame,
     target: str,
@@ -556,7 +565,7 @@ def _fit_and_assemble_result(
     target: str,
     *,
     kept_columns: list[str],
-    excluded_features: list[_ExcludedFeature],
+    excluded_features: list[ExcludedFeature],
     n_rows: int,
     max_depth: int,
     min_samples_leaf: int,
@@ -569,7 +578,7 @@ def _fit_and_assemble_result(
         df_clean (pl.DataFrame): DataFrame with null-target rows removed.
         target (str): Target column name.
         kept_columns (list[str]): Feature column names that survived filtering.
-        excluded_features (list[_ExcludedFeature]): Excluded features with reasons.
+        excluded_features (list[ExcludedFeature]): Excluded features with reasons.
         n_rows (int): Number of rows in `df_clean`.
         max_depth (int): Maximum tree depth; must be between 1 and
             `_MAX_TREE_DEPTH` (inclusive).
@@ -580,13 +589,13 @@ def _fit_and_assemble_result(
     Returns:
         DecisionTreeResult: The fully assembled decision tree result.
     """
-    detected_task_type = _detect_task_type(df_clean[target], task_type)
-    feature_matrix, feature_encoders = _encode_features(df_clean, kept_columns)
-    target_array, target_mapping = _encode_target(df_clean[target], detected_task_type)
+    detected_task_type = detect_task_type(df_clean[target], task_type)
+    feature_matrix, feature_encoders = encode_features(df_clean, kept_columns)
+    target_array, target_mapping = encode_target(df_clean[target], detected_task_type)
 
     effective_min_samples = _compute_effective_min_samples(n_rows, min_samples_leaf)
 
-    fitted_tree = _fit_tree(
+    fitted_tree = fit_tree(
         feature_matrix,
         target_array,
         task_type=detected_task_type,
@@ -594,7 +603,7 @@ def _fit_and_assemble_result(
         min_samples_leaf=effective_min_samples,
         random_state=random_state,
     )
-    rules = _extract_rules(
+    rules = extract_rules(
         fitted_tree,
         feature_matrix,
         target_array,
@@ -602,13 +611,13 @@ def _fit_and_assemble_result(
         target_mapping=target_mapping,
         task_type=detected_task_type,
     )
-    metrics = _compute_metrics(fitted_tree, feature_matrix, target_array, task_type=detected_task_type)
-    feature_importance = _compute_feature_importance(fitted_tree, kept_columns)
+    metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task_type=detected_task_type)
+    feature_importance = compute_feature_importance(fitted_tree, kept_columns)
     # `kept_columns` that have zero importance are dropped from `features_used`;
     # only columns that actually contributed to splits appear in `feature_importance`.
     features_used = [col for col in kept_columns if col in feature_importance]
     zero_importance = [
-        _ExcludedFeature(name=col, reason="zero importance") for col in kept_columns if col not in feature_importance
+        ExcludedFeature(name=col, reason="zero importance") for col in kept_columns if col not in feature_importance
     ]
     features_excluded_labels = [f"{ef.name} ({ef.reason})" for ef in [*excluded_features, *zero_importance]]
 
