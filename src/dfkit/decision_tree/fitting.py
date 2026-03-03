@@ -210,12 +210,12 @@ def compute_feature_importance(
 
 def analyze_with_decision_tree(
     df: pl.DataFrame,
+    features: list[str] | None,
     target: str,
     *,
-    features: list[str] | None,
-    max_depth: int,
-    min_samples_leaf: int,
-    task: str | None,
+    task: str | None = None,
+    max_depth: int = MAX_TREE_DEPTH,
+    min_samples_leaf: int = AUTO_MIN_SAMPLES_FLOOR,
     random_state: int | None = None,
 ) -> DecisionTreeResult:
     """Orchestrate the full decision tree fitting pipeline.
@@ -226,15 +226,15 @@ def analyze_with_decision_tree(
 
     Args:
         df (pl.DataFrame): The source DataFrame containing features and target.
-        target (str): Name of the target column.
         features (list[str] | None): Feature column names to consider. When
             `None`, all columns except `target` are used.
+        target (str): Name of the target column.
+        task (str | None): `"classification"`, `"regression"`, or `None`
+            for automatic inference of task type.
         max_depth (int): Maximum tree depth; must be between 1 and
             `MAX_TREE_DEPTH` (inclusive).
         min_samples_leaf (int): Minimum samples required at a leaf node.
             Auto-adjusted upward when the dataset is large.
-        task (str | None): `"classification"`, `"regression"`, or `None`
-            for automatic detection.
         random_state (int | None): Random seed passed to the sklearn tree for
             reproducibility.  `None` means non-deterministic.
 

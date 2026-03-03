@@ -1266,8 +1266,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            ["tenure_months", "support_tickets"],
             "churn",
-            features=["tenure_months", "support_tickets"],
             max_depth=3,
             min_samples_leaf=5,
             task=None,
@@ -1305,8 +1305,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            ["sqft"],
             "house_price",
-            features=["sqft"],
             max_depth=3,
             min_samples_leaf=5,
             task=None,
@@ -1349,8 +1349,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            None,
             "readmitted",
-            features=None,
             max_depth=3,
             min_samples_leaf=5,
             task=None,
@@ -1379,8 +1379,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            ["wait_time_minutes"],
             "satisfaction_rating",
-            features=["wait_time_minutes"],
             max_depth=3,
             min_samples_leaf=5,
             task="classification",
@@ -1402,8 +1402,8 @@ class TestBuildDecisionTreeResult:
         with pytest.raises(ValueError, match="nonexistent_target"):
             analyze_with_decision_tree(
                 df,
+                None,
                 "nonexistent_target",
-                features=None,
                 max_depth=3,
                 min_samples_leaf=2,
                 task=None,
@@ -1421,8 +1421,8 @@ class TestBuildDecisionTreeResult:
         with pytest.raises(ValueError, match="missing_feature"):
             analyze_with_decision_tree(
                 df,
+                ["age", "missing_feature"],
                 "label",
-                features=["age", "missing_feature"],
                 max_depth=3,
                 min_samples_leaf=2,
                 task=None,
@@ -1440,8 +1440,8 @@ class TestBuildDecisionTreeResult:
         with pytest.raises(ValueError, match="No valid feature columns"):
             analyze_with_decision_tree(
                 df,
+                ["constant_col"],
                 "outcome",
-                features=["constant_col"],
                 max_depth=3,
                 min_samples_leaf=2,
                 task=None,
@@ -1459,8 +1459,8 @@ class TestBuildDecisionTreeResult:
         with pytest.raises(ValueError, match="null_target"):
             analyze_with_decision_tree(
                 df,
+                ["age"],
                 "null_target",
-                features=["age"],
                 max_depth=3,
                 min_samples_leaf=2,
                 task=None,
@@ -1478,8 +1478,8 @@ class TestBuildDecisionTreeResult:
         with pytest.raises(ValueError, match="diagnosis"):
             analyze_with_decision_tree(
                 df,
+                ["age"],
                 "diagnosis",
-                features=["age"],
                 max_depth=3,
                 min_samples_leaf=2,
                 task=None,
@@ -1497,8 +1497,8 @@ class TestBuildDecisionTreeResult:
         with pytest.raises(ValueError, match="min_samples_leaf"):
             analyze_with_decision_tree(
                 df,
+                ["score"],
                 "grade",
-                features=["score"],
                 max_depth=3,
                 min_samples_leaf=10,
                 task=None,
@@ -1516,8 +1516,8 @@ class TestBuildDecisionTreeResult:
         with pytest.raises(ValueError, match="max_depth"):
             analyze_with_decision_tree(
                 df,
+                ["score"],
                 "grade",
-                features=["score"],
                 max_depth=10,
                 min_samples_leaf=2,
                 task=None,
@@ -1535,8 +1535,8 @@ class TestBuildDecisionTreeResult:
         with pytest.raises(ValueError, match="max_depth"):
             analyze_with_decision_tree(
                 df,
+                ["score"],
                 "grade",
-                features=["score"],
                 max_depth=0,
                 min_samples_leaf=2,
                 task=None,
@@ -1564,8 +1564,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            ["score"],
             "grade",
-            features=["score"],
             max_depth=6,
             min_samples_leaf=5,
             task=None,
@@ -1596,8 +1596,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            ["age"],
             "health_risk",
-            features=["age"],
             max_depth=3,
             min_samples_leaf=5,
             task=None,
@@ -1625,8 +1625,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            ["annual_income"],
             "loan_status",
-            features=["annual_income"],
             max_depth=3,
             min_samples_leaf=5,
             task=None,
@@ -1653,8 +1653,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            ["word_count", "link_count"],
             "is_spam",
-            features=["word_count", "link_count"],
             max_depth=3,
             min_samples_leaf=5,
             task=None,
@@ -1696,8 +1696,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            ["order_value_usd", "shipping_method"],
             "delivered_on_time",
-            features=["order_value_usd", "shipping_method"],
             max_depth=3,
             min_samples_leaf=5,
             task=None,
@@ -1726,8 +1726,8 @@ class TestBuildDecisionTreeResult:
         # Act
         result = analyze_with_decision_tree(
             df,
+            ["driver_age"],
             "annual_premium_usd",
-            features=["driver_age"],
             max_depth=3,
             min_samples_leaf=5,
             task=None,
