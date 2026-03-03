@@ -239,11 +239,10 @@ type DecisionTreeRule = Annotated[
 
 
 class DecisionTreeResult(BaseModel):
-    """Structured output from the build_decision_tree tool.
+    """Result of fitting a decision tree that predicts a target column from one or more feature columns.
 
-    Captures the full result of fitting a decision tree, including the
-    human-readable rules extracted from each leaf, feature importance scores,
-    evaluation metrics, and tree structure metadata.
+    Bundles human-readable rules extracted from each leaf, feature importance scores,
+    evaluation metrics, and tree structure metadata into a single serializable object.
 
     Attributes:
         target (str): Target column name used as the prediction label.
