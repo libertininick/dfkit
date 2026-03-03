@@ -38,6 +38,75 @@ AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of data
 
 
 # ---------------------------------------------------------------------------
+# Public interface -- Pipeline orchestration
+# ---------------------------------------------------------------------------
+
+
+def analyze_with_decision_tree(
+    df: pl.DataFrame,
+    features: list[str] | None,
+    target: str,
+    *,
+    task: str | None = None,
+    max_depth: int = MAX_TREE_DEPTH,
+    min_samples_leaf: int = AUTO_MIN_SAMPLES_FLOOR,
+    random_state: int | None = None,
+) -> DecisionTreeResult:
+    """Analyze the relationship of target column to other column(s) using a decision tree.
+
+    Validates inputs, preprocesses features and target, fits a decision tree,
+    extracts rules, computes metrics and feature importance, then assembles
+    and returns a `DecisionTreeResult`.
+
+    Args:
+        df (pl.DataFrame): The source DataFrame containing features and target.
+        features (list[str] | None): Feature column names to consider. When
+            `None`, all columns except `target` are used.
+        target (str): Name of the target column.
+        task (str | None): `"classification"`, `"regression"`, or `None`
+            for automatic inference of task type.
+        max_depth (int): Maximum tree depth; must be between 1 and
+            `MAX_TREE_DEPTH` (inclusive).
+        min_samples_leaf (int): Minimum samples required at a leaf node.
+            Auto-adjusted upward when the dataset is large.
+        random_state (int | None): Random seed passed to the sklearn tree for
+            reproducibility.  `None` means non-deterministic.
+
+    Returns:
+        DecisionTreeResult: The fitted tree result.
+
+    Raises:
+        ValueError: On any validation failure (missing columns, degenerate
+            target, no valid features, or insufficient samples).
+    """
+    _validate_inputs(df, target, features)
+
+    feature_columns = features if features is not None else [col for col in df.columns if col != target]
+
+    # Drop null-target rows before feature filtering so the cardinality ratio
+    # uses the same denominator as the data the tree will be fitted on.
+    df_clean = _prepare_clean_dataframe(df, target, min_samples_leaf)
+
+    kept_columns, excluded_features = filter_features(df_clean, feature_columns)
+
+    if not kept_columns:
+        excluded_labels = [f"{ef.name} ({ef.reason})" for ef in excluded_features]
+        raise ValueError(f"No valid feature columns remain after filtering. Excluded: {excluded_labels}")
+
+    n_rows = len(df_clean)
+    return _fit_and_assemble_result(
+        df_clean=df_clean,
+        target=target,
+        kept_columns=kept_columns,
+        n_rows=n_rows,
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
+        task_override=task,
+        random_state=random_state,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Public interface -- Tree fitting
 # ---------------------------------------------------------------------------
 
@@ -201,75 +270,6 @@ def compute_feature_importance(
         last_name = renormalized[-1][0]
         renormalized[-1] = (last_name, round(1.0 - others_sum, 4))
     return dict(renormalized)
-
-
-# ---------------------------------------------------------------------------
-# Public interface -- Pipeline orchestration
-# ---------------------------------------------------------------------------
-
-
-def analyze_with_decision_tree(
-    df: pl.DataFrame,
-    features: list[str] | None,
-    target: str,
-    *,
-    task: str | None = None,
-    max_depth: int = MAX_TREE_DEPTH,
-    min_samples_leaf: int = AUTO_MIN_SAMPLES_FLOOR,
-    random_state: int | None = None,
-) -> DecisionTreeResult:
-    """Orchestrate the full decision tree fitting pipeline.
-
-    Validates inputs, preprocesses features and target, fits a decision tree,
-    extracts rules, computes metrics and feature importance, then assembles
-    and returns a `DecisionTreeResult`.
-
-    Args:
-        df (pl.DataFrame): The source DataFrame containing features and target.
-        features (list[str] | None): Feature column names to consider. When
-            `None`, all columns except `target` are used.
-        target (str): Name of the target column.
-        task (str | None): `"classification"`, `"regression"`, or `None`
-            for automatic inference of task type.
-        max_depth (int): Maximum tree depth; must be between 1 and
-            `MAX_TREE_DEPTH` (inclusive).
-        min_samples_leaf (int): Minimum samples required at a leaf node.
-            Auto-adjusted upward when the dataset is large.
-        random_state (int | None): Random seed passed to the sklearn tree for
-            reproducibility.  `None` means non-deterministic.
-
-    Returns:
-        DecisionTreeResult: The fitted tree result.
-
-    Raises:
-        ValueError: On any validation failure (missing columns, degenerate
-            target, no valid features, or insufficient samples).
-    """
-    _validate_inputs(df, target, features)
-
-    feature_columns = features if features is not None else [col for col in df.columns if col != target]
-
-    # Drop null-target rows before feature filtering so the cardinality ratio
-    # uses the same denominator as the data the tree will be fitted on.
-    df_clean = _prepare_clean_dataframe(df, target, min_samples_leaf)
-
-    kept_columns, excluded_features = filter_features(df_clean, feature_columns)
-
-    if not kept_columns:
-        excluded_labels = [f"{ef.name} ({ef.reason})" for ef in excluded_features]
-        raise ValueError(f"No valid feature columns remain after filtering. Excluded: {excluded_labels}")
-
-    n_rows = len(df_clean)
-    return _fit_and_assemble_result(
-        df_clean=df_clean,
-        target=target,
-        kept_columns=kept_columns,
-        n_rows=n_rows,
-        max_depth=max_depth,
-        min_samples_leaf=min_samples_leaf,
-        task_override=task,
-        random_state=random_state,
-    )
 
 
 # ---------------------------------------------------------------------------
