@@ -9,6 +9,7 @@ from pytest_check import check
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from dfkit.decision_tree.fitting import (
+    _simplify_predicates,
     analyze_with_decision_tree,
     compute_feature_importance,
     compute_metrics,
@@ -1739,6 +1740,216 @@ class TestBuildDecisionTreeResult:
                 assert isinstance(rule.predicates, list)
             with check:
                 assert all(isinstance(p, Predicate) for p in rule.predicates)
+
+
+class TestSimplifyPredicates:
+    """Tests for `_simplify_predicates`: reduces a predicate list to tightest constraints."""
+
+    def test_multiple_le_predicates_keeps_minimum(self) -> None:
+        """Two `<=` predicates on the same variable should yield the smallest value.
+
+        When two upper-bound predicates cover the same variable, only the
+        tighter (smaller) threshold is meaningful. The function must discard
+        the looser bound.
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="bmi", operator="<=", value=27.25),
+            Predicate(variable="bmi", operator="<=", value=24.35),
+        ]
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert
+        assert len(result) == 1
+        assert result[0].value == 24.35
+
+    def test_multiple_gt_predicates_keeps_maximum(self) -> None:
+        """Two `>` predicates on the same variable should yield the largest value.
+
+        When two lower-bound predicates cover the same variable, only the
+        tighter (larger) threshold is meaningful. The function must discard
+        the looser bound.
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="age", operator=">", value=20.95),
+            Predicate(variable="age", operator=">", value=24.5),
+        ]
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert
+        assert len(result) == 1
+        assert result[0].value == 24.5
+
+    def test_mixed_operators_same_variable(self) -> None:
+        """Four predicates on one variable with two operators should simplify to two.
+
+        Given `age <= 57.5`, `age > 20.95`, `age <= 31.5`, `age > 24.5`, the
+        function should keep only the tightest bound per operator: `<= 31.5`
+        and `> 24.5`.
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="age", operator="<=", value=57.5),
+            Predicate(variable="age", operator=">", value=20.95),
+            Predicate(variable="age", operator="<=", value=31.5),
+            Predicate(variable="age", operator=">", value=24.5),
+        ]
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert — two predicates remain, tightest per operator
+        assert len(result) == 2
+        le_result = next(p for p in result if p.operator == "<=")
+        gt_result = next(p for p in result if p.operator == ">")
+        with check:
+            assert le_result.value == 31.5
+        with check:
+            assert gt_result.value == 24.5
+
+    def test_full_example_from_spec(self) -> None:
+        """Six predicates across two variables should simplify to three.
+
+        Input: bmi<=27.25, age<=57.5, bmi<=24.35, age>20.95, age<=31.5, age>24.5.
+        Expected: bmi<=24.35, age<=31.5, age>24.5.
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="bmi", operator="<=", value=27.25),
+            Predicate(variable="age", operator="<=", value=57.5),
+            Predicate(variable="bmi", operator="<=", value=24.35),
+            Predicate(variable="age", operator=">", value=20.95),
+            Predicate(variable="age", operator="<=", value=31.5),
+            Predicate(variable="age", operator=">", value=24.5),
+        ]
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert
+        assert len(result) == 3
+        bmi_pred = next(p for p in result if p.variable == "bmi")
+        age_le = next(p for p in result if p.variable == "age" and p.operator == "<=")
+        age_gt = next(p for p in result if p.variable == "age" and p.operator == ">")
+        with check:
+            assert bmi_pred.value == 24.35
+        with check:
+            assert age_le.value == 31.5
+        with check:
+            assert age_gt.value == 24.5
+
+    def test_in_predicates_intersected(self) -> None:
+        """Two `in` predicates on the same variable should be replaced by their intersection.
+
+        When a categorical feature appears at multiple tree splits, only the
+        values present in every branch are valid. The function must intersect
+        the value sets rather than keeping either individual set.
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="color", operator="in", value={"red", "green", "blue"}),
+            Predicate(variable="color", operator="in", value={"green", "blue", "yellow"}),
+        ]
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert
+        assert len(result) == 1
+        assert result[0].value == {"green", "blue"}
+
+    def test_single_predicate_per_variable_unchanged(self) -> None:
+        """Predicates on distinct variables with no duplicates should pass through unchanged.
+
+        When each `(variable, operator)` pair appears exactly once, no
+        simplification is possible and the function must return equivalent
+        predicates (same variable, operator, and value for each).
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="bmi", operator="<=", value=27.25),
+            Predicate(variable="age", operator=">", value=20.95),
+        ]
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert
+        assert len(result) == 2
+        bmi_pred = next(p for p in result if p.variable == "bmi")
+        age_pred = next(p for p in result if p.variable == "age")
+        with check:
+            assert bmi_pred.operator == "<="
+            assert bmi_pred.value == 27.25
+        with check:
+            assert age_pred.operator == ">"
+            assert age_pred.value == 20.95
+
+    def test_empty_list_returns_empty(self) -> None:
+        """An empty input list should produce an empty output list."""
+        # Arrange
+        predicates: list[Predicate] = []
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert
+        assert result == []
+
+    def test_does_not_mutate_input(self) -> None:
+        """The original predicate list must not be modified by the function.
+
+        Callers should be able to reuse their predicate list after calling
+        `_simplify_predicates` without observing any side effects.
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="bmi", operator="<=", value=27.25),
+            Predicate(variable="bmi", operator="<=", value=24.35),
+            Predicate(variable="age", operator=">", value=20.95),
+        ]
+        original_length = len(predicates)
+        original_values = [(p.variable, p.operator, p.value) for p in predicates]
+
+        # Act
+        _simplify_predicates(predicates)
+
+        # Assert
+        assert len(predicates) == original_length
+        for i, (variable, op, value) in enumerate(original_values):
+            with check:
+                assert predicates[i].variable == variable
+            with check:
+                assert predicates[i].operator == op
+            with check:
+                assert predicates[i].value == value
+
+    def test_preserves_variable_encounter_order(self) -> None:
+        """Output variables should appear in the order they are first encountered.
+
+        Given predicates ordered bmi, age, bmi, the first encountered variable
+        is bmi (at index 0), then age (at index 1). The result must list bmi
+        before age regardless of how many predicates each variable has.
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="bmi", operator="<=", value=27.25),
+            Predicate(variable="age", operator=">", value=20.95),
+            Predicate(variable="bmi", operator="<=", value=24.35),
+        ]
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert
+        assert len(result) == 2
+        assert result[0].variable == "bmi"
+        assert result[1].variable == "age"
 
 
 # ---------------------------------------------------------------------------

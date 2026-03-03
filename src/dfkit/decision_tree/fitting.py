@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import polars as pl
@@ -489,6 +489,63 @@ def _build_regression_rule(
         samples=n_samples,
         std=round(leaf_std, 4),
     )
+
+
+def _simplify_predicates(predicates: list[Predicate]) -> list[Predicate]:
+    """Reduce a list of predicates to the tightest equivalent constraints.
+
+    Groups predicates by `(variable, operator)` and applies operator-specific
+    simplification rules:
+
+    - `<=`: keeps the predicate with the smallest value (tightest upper bound).
+    - `>`: keeps the predicate with the largest value (tightest lower bound).
+    - `in`: replaces the group with a single predicate whose `value` is the
+      intersection of all `value` sets.
+    - Any other operator: passes all predicates through unchanged.
+
+    The output ordering mirrors the first appearance of each variable in the
+    input list, then preserves operator order within that variable.
+
+    Args:
+        predicates (list[Predicate]): Predicates to simplify. Neither the list
+            nor any `Predicate` object is mutated.
+
+    Returns:
+        list[Predicate]: Simplified predicates in first-appearance order.
+    """
+    groups: dict[tuple[str, str], list[Predicate]] = {}
+    for predicate in predicates:
+        key = (predicate.variable, predicate.operator)
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(predicate)
+
+    result: list[Predicate] = []
+    for (variable, op), group in groups.items():
+        result.extend(_simplify_predicate_group(variable, op, group))
+    return result
+
+
+def _simplify_predicate_group(variable: str, op: str, group: list[Predicate]) -> list[Predicate]:
+    """Simplify one `(variable, operator)` predicate group to its tightest constraints.
+
+    Args:
+        variable (str): The feature variable shared by all predicates in the group.
+        op (str): The operator shared by all predicates in the group.
+        group (list[Predicate]): One or more predicates with the same variable and operator.
+
+    Returns:
+        list[Predicate]: Simplified predicates for this group.
+    """
+    if op == "<=":
+        return [min(group, key=lambda p: cast(float, p.value))]
+    if op == ">":
+        return [max(group, key=lambda p: cast(float, p.value))]
+    if op == "in":
+        sets = [cast(set[float] | set[str], p.value) for p in group]
+        intersection = sets[0].intersection(*sets[1:])
+        return [Predicate(variable=variable, operator="in", value=intersection)]
+    return list(group)
 
 
 def _validate_inputs(
