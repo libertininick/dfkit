@@ -92,7 +92,7 @@ def analyze_with_decision_tree(
         raise ValueError(f"No valid feature columns remain after filtering. Excluded: {excluded_labels}")
 
     n_rows = len(df_clean)
-    return _fit_and_assemble_result(
+    return _encode_fit_extract(
         df_clean=df_clean,
         target=target,
         kept_columns=kept_columns,
@@ -541,7 +541,7 @@ def _prepare_clean_dataframe(
     return df_clean
 
 
-def _fit_and_assemble_result(
+def _encode_fit_extract(
     df_clean: pl.DataFrame,
     target: str,
     *,
