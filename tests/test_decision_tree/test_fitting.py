@@ -1952,6 +1952,130 @@ class TestSimplifyPredicates:
         assert result[1].variable == "age"
 
 
+class TestExtractRulesSimplification:
+    """Integration tests verifying that `extract_rules` returns simplified predicates."""
+
+    def test_extract_rules_simplifies_redundant_numeric_predicates(self) -> None:
+        """Rules returned by `extract_rules` must not repeat a `(variable, operator)` pair.
+
+        Fits a deep tree (depth 6) on a single numeric feature with enough
+        variance to force the tree to split on the same variable multiple times
+        along some root-to-leaf paths.  After simplification, no
+        `(variable, operator)` combination should appear more than once in any
+        rule's `predicates` list.
+        """
+        # Arrange — 200 samples, single numeric feature, many fine-grained classes
+        # to encourage the tree to split on the same variable many times per path.
+        rng = np.random.default_rng(53)
+        n_rows = 200
+        score = rng.uniform(0.0, 100.0, n_rows)
+        # Eight-class target forces deep splits on the single feature
+        label = [
+            "A"
+            if s >= 87.5
+            else "B"
+            if s >= 75.0
+            else "C"
+            if s >= 62.5
+            else "D"
+            if s >= 50.0
+            else "E"
+            if s >= 37.5
+            else "F"
+            if s >= 25.0
+            else "G"
+            if s >= 12.5
+            else "H"
+            for s in score
+        ]
+        df = pl.DataFrame({"score": score.tolist(), "grade": label})
+        feature_matrix, feature_encoders = encode_features(df, ["score"])
+        target_array, target_mapping = encode_target(df["grade"], "classification")
+        fitted_tree = fit_tree(
+            "classification",
+            feature_matrix,
+            target_array,
+            max_depth=6,
+            min_samples_leaf=5,
+            random_state=53,
+        )
+
+        # Act
+        rules = extract_rules(
+            fitted_tree,
+            feature_matrix,
+            target_array,
+            feature_encoders=feature_encoders,
+            target_mapping=target_mapping,
+            task="classification",
+        )
+
+        # Assert — no (variable, operator) pair appears more than once per rule
+        assert len(rules) > 0
+        for rule in rules:
+            seen_pairs: set[tuple[str, str]] = set()
+            for predicate in rule.predicates:
+                pair = (predicate.variable, predicate.operator)
+                with check:
+                    assert pair not in seen_pairs, (
+                        f"Duplicate (variable, operator) pair {pair!r} found in rule predicates"
+                    )
+                seen_pairs.add(pair)
+
+    def test_extract_rules_simplifies_redundant_categorical_predicates(self) -> None:
+        """Rules returned by `extract_rules` must not repeat the `in` operator for the same variable.
+
+        Fits a tree on a single categorical feature with eight distinct
+        categories so the tree is likely to split on the same variable along
+        some paths.  After simplification, no variable should appear more than
+        once with the ``in`` operator in any rule's predicates list.
+        """
+        # Arrange — 160 samples, eight-category feature; label correlates directly
+        # with category so the tree splits on the feature repeatedly.
+        categories = ["cat_a", "cat_b", "cat_c", "cat_d", "cat_e", "cat_f", "cat_g", "cat_h"]
+        n_per_cat = 20
+        category_col = []
+        label_col = []
+        for i, cat in enumerate(categories):
+            category_col.extend([cat] * n_per_cat)
+            # Alternate between two labels within each category, but each category
+            # majority maps to a different label to encourage many categorical splits.
+            majority = "high" if i % 2 == 0 else "low"
+            minority = "low" if majority == "high" else "high"
+            label_col.extend([majority] * (n_per_cat - 2) + [minority] * 2)
+        df = pl.DataFrame({"product_tier": category_col, "price_band": label_col})
+        feature_matrix, feature_encoders = encode_features(df, ["product_tier"])
+        target_array, target_mapping = encode_target(df["price_band"], "classification")
+        fitted_tree = fit_tree(
+            "classification",
+            feature_matrix,
+            target_array,
+            max_depth=6,
+            min_samples_leaf=5,
+            random_state=17,
+        )
+
+        # Act
+        rules = extract_rules(
+            fitted_tree,
+            feature_matrix,
+            target_array,
+            feature_encoders=feature_encoders,
+            target_mapping=target_mapping,
+            task="classification",
+        )
+
+        # Assert — the `in` operator must appear at most once per variable per rule
+        assert len(rules) > 0
+        for rule in rules:
+            in_variables: list[str] = [p.variable for p in rule.predicates if p.operator == "in"]
+            unique_in_variables = set(in_variables)
+            with check:
+                assert len(in_variables) == len(unique_in_variables), (
+                    f"Variable 'product_tier' appears {len(in_variables)} times with 'in' operator"
+                )
+
+
 # ---------------------------------------------------------------------------
 # Private test helpers
 # ---------------------------------------------------------------------------

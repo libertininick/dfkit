@@ -166,6 +166,10 @@ def extract_rules(
     For regression tasks, the per-leaf standard deviation is computed from the
     actual training samples assigned to each leaf via `tree.apply(feature_matrix)`.
 
+    Redundant predicates on the same variable are simplified: multiple `<=`
+    thresholds are reduced to the minimum, multiple `>` thresholds to the
+    maximum, and multiple `in` sets are intersected.
+
     Args:
         tree (DecisionTree): A fitted sklearn tree.
         feature_matrix (np.ndarray): 2-D feature matrix used to fit the tree.
@@ -192,6 +196,7 @@ def extract_rules(
         path_predicates=[],
         rules=rules,
     )
+    rules = [rule.model_copy(update={"predicates": _simplify_predicates(rule.predicates)}) for rule in rules]
     return rules
 
 
