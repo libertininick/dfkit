@@ -9,7 +9,7 @@ from pytest_check import check
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from dfkit.decision_tree.fitting import (
-    build_decision_tree_result,
+    analyze_with_decision_tree,
     compute_feature_importance,
     compute_metrics,
     extract_rules,
@@ -1243,7 +1243,7 @@ class TestComputeFeatureImportance:
 
 
 class TestBuildDecisionTreeResult:
-    """Tests for `build_decision_tree_result`: full pipeline orchestration."""
+    """Tests for `analyze_with_decision_tree`: full pipeline orchestration."""
 
     def test_classification_end_to_end(self) -> None:
         """Full pipeline with a string target should return a `DecisionTreeResult` with classification rules.
@@ -1264,7 +1264,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "churn",
             features=["tenure_months", "support_tickets"],
@@ -1303,7 +1303,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "house_price",
             features=["sqft"],
@@ -1347,7 +1347,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "readmitted",
             features=None,
@@ -1377,7 +1377,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "satisfaction_rating",
             features=["wait_time_minutes"],
@@ -1400,7 +1400,7 @@ class TestBuildDecisionTreeResult:
 
         # Act / Assert
         with pytest.raises(ValueError, match="nonexistent_target"):
-            build_decision_tree_result(
+            analyze_with_decision_tree(
                 df,
                 "nonexistent_target",
                 features=None,
@@ -1419,7 +1419,7 @@ class TestBuildDecisionTreeResult:
 
         # Act / Assert
         with pytest.raises(ValueError, match="missing_feature"):
-            build_decision_tree_result(
+            analyze_with_decision_tree(
                 df,
                 "label",
                 features=["age", "missing_feature"],
@@ -1438,7 +1438,7 @@ class TestBuildDecisionTreeResult:
 
         # Act / Assert
         with pytest.raises(ValueError, match="No valid feature columns"):
-            build_decision_tree_result(
+            analyze_with_decision_tree(
                 df,
                 "outcome",
                 features=["constant_col"],
@@ -1457,7 +1457,7 @@ class TestBuildDecisionTreeResult:
 
         # Act / Assert
         with pytest.raises(ValueError, match="null_target"):
-            build_decision_tree_result(
+            analyze_with_decision_tree(
                 df,
                 "null_target",
                 features=["age"],
@@ -1476,7 +1476,7 @@ class TestBuildDecisionTreeResult:
 
         # Act / Assert
         with pytest.raises(ValueError, match="diagnosis"):
-            build_decision_tree_result(
+            analyze_with_decision_tree(
                 df,
                 "diagnosis",
                 features=["age"],
@@ -1495,7 +1495,7 @@ class TestBuildDecisionTreeResult:
 
         # Act / Assert
         with pytest.raises(ValueError, match="min_samples_leaf"):
-            build_decision_tree_result(
+            analyze_with_decision_tree(
                 df,
                 "grade",
                 features=["score"],
@@ -1514,7 +1514,7 @@ class TestBuildDecisionTreeResult:
 
         # Act / Assert
         with pytest.raises(ValueError, match="max_depth"):
-            build_decision_tree_result(
+            analyze_with_decision_tree(
                 df,
                 "grade",
                 features=["score"],
@@ -1533,7 +1533,7 @@ class TestBuildDecisionTreeResult:
 
         # Act / Assert
         with pytest.raises(ValueError, match="max_depth"):
-            build_decision_tree_result(
+            analyze_with_decision_tree(
                 df,
                 "grade",
                 features=["score"],
@@ -1562,7 +1562,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "grade",
             features=["score"],
@@ -1594,7 +1594,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "health_risk",
             features=["age"],
@@ -1623,7 +1623,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "loan_status",
             features=["annual_income"],
@@ -1651,7 +1651,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "is_spam",
             features=["word_count", "link_count"],
@@ -1694,7 +1694,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "delivered_on_time",
             features=["order_value_usd", "shipping_method"],
@@ -1724,7 +1724,7 @@ class TestBuildDecisionTreeResult:
         })
 
         # Act
-        result = build_decision_tree_result(
+        result = analyze_with_decision_tree(
             df,
             "annual_premium_usd",
             features=["driver_age"],

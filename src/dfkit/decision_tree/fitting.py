@@ -208,7 +208,7 @@ def compute_feature_importance(
 # ---------------------------------------------------------------------------
 
 
-def build_decision_tree_result(
+def analyze_with_decision_tree(
     df: pl.DataFrame,
     target: str,
     *,
