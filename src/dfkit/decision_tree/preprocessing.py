@@ -15,7 +15,7 @@ from dfkit.decision_tree.models import ColumnType, DecisionTreeTask
 # Module-level constants
 # ---------------------------------------------------------------------------
 
-_DTYPE_TO_COLUMN_TYPE: dict[type[pl.DataType] | pl.DataType, ColumnType] = {
+DTYPE_TO_COLUMN_TYPE: dict[type[pl.DataType] | pl.DataType, ColumnType] = {
     pl.Int8: "numeric",
     pl.Int16: "numeric",
     pl.Int32: "numeric",
@@ -35,10 +35,10 @@ _DTYPE_TO_COLUMN_TYPE: dict[type[pl.DataType] | pl.DataType, ColumnType] = {
     pl.Duration: "duration",
 }
 
-_HIGH_CARDINALITY_RATIO: float = 0.9
+HIGH_CARDINALITY_RATIO: float = 0.9
 THRESHOLD_DECIMAL_PLACES: int = 4  # Decimal places for rounding numeric split thresholds in predicates.
 
-_INTEGER_DTYPES: frozenset[type[pl.DataType]] = frozenset({
+INTEGER_DTYPES: frozenset[type[pl.DataType]] = frozenset({
     pl.Int8,
     pl.Int16,
     pl.Int32,
@@ -48,8 +48,8 @@ _INTEGER_DTYPES: frozenset[type[pl.DataType]] = frozenset({
     pl.UInt32,
     pl.UInt64,
 })
-_MAX_CLASSIFICATION_UNIQUE_COUNT: int = 20
-_MAX_CLASSIFICATION_UNIQUE_RATIO: float = 0.05
+MAX_CLASSIFICATION_UNIQUE_COUNT: int = 20
+MAX_CLASSIFICATION_UNIQUE_RATIO: float = 0.05
 
 # ---------------------------------------------------------------------------
 # Public interface -- Column type classification
@@ -104,7 +104,7 @@ def classify_column(dtype: pl.DataType) -> ColumnType:
         ColumnType: One of `"numeric"`, `"boolean"`, `"categorical"`,
             `"datetime"`, `"duration"`, or `"excluded"`.
     """
-    result = _DTYPE_TO_COLUMN_TYPE.get(dtype)
+    result = DTYPE_TO_COLUMN_TYPE.get(dtype)
     if result is not None:
         return result
     if isinstance(dtype, (pl.Datetime, pl.Date)):
@@ -177,11 +177,11 @@ def detect_task_type(
     if task_type_override in {"classification", "regression"}:
         return task_type_override  # type: ignore[return-value]
 
-    column_type = _DTYPE_TO_COLUMN_TYPE.get(series.dtype)
+    column_type = DTYPE_TO_COLUMN_TYPE.get(series.dtype)
     if column_type in {"boolean", "categorical"}:
         return "classification"
 
-    if series.dtype in _INTEGER_DTYPES and _integer_series_is_classification(series):
+    if series.dtype in INTEGER_DTYPES and _integer_series_is_classification(series):
         return "classification"
 
     return "regression"
@@ -298,7 +298,7 @@ def _get_exclusion_reason(series: pl.Series, row_count: int) -> str | None:
     unique_count = series.n_unique()
     if unique_count <= 1:
         return "single unique value"
-    if column_type == "categorical" and row_count > 0 and unique_count / row_count > _HIGH_CARDINALITY_RATIO:
+    if column_type == "categorical" and row_count > 0 and unique_count / row_count > HIGH_CARDINALITY_RATIO:
         return "high cardinality: likely unique identifier"
 
     return None
@@ -325,17 +325,17 @@ def _integer_series_is_classification(series: pl.Series) -> bool:
 
     Returns:
         bool: `True` when the series has at most
-            `_MAX_CLASSIFICATION_UNIQUE_COUNT` unique values or when the
+            `MAX_CLASSIFICATION_UNIQUE_COUNT` unique values or when the
             ratio of unique values to non-null values is below
-            `_MAX_CLASSIFICATION_UNIQUE_RATIO`.
+            `MAX_CLASSIFICATION_UNIQUE_RATIO`.
     """
     non_null_series = series.drop_nulls()
     unique_count = non_null_series.n_unique()
     non_null_count = non_null_series.len()
 
-    if unique_count <= _MAX_CLASSIFICATION_UNIQUE_COUNT:
+    if unique_count <= MAX_CLASSIFICATION_UNIQUE_COUNT:
         return True
-    return non_null_count > 0 and unique_count / non_null_count < _MAX_CLASSIFICATION_UNIQUE_RATIO
+    return non_null_count > 0 and unique_count / non_null_count < MAX_CLASSIFICATION_UNIQUE_RATIO
 
 
 def _encode_single_feature(

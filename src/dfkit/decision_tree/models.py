@@ -23,6 +23,19 @@ type DecisionTreeTask = Literal["classification", "regression"]
 type DecisionTree = DecisionTreeClassifier | DecisionTreeRegressor
 
 # ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
+
+SCALAR_OPS: dict[str, Callable[[Any, Any], bool]] = {
+    ">": operator.gt,
+    ">=": operator.ge,
+    "<": operator.lt,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+}
+
+# ---------------------------------------------------------------------------
 # Public models
 # ---------------------------------------------------------------------------
 
@@ -407,15 +420,6 @@ class DecisionTreeResult(BaseModel):
 # Private helpers -- Predicate operator evaluation
 # ---------------------------------------------------------------------------
 
-_SCALAR_OPS: dict[str, Callable[[Any, Any], bool]] = {
-    ">": operator.gt,
-    ">=": operator.ge,
-    "<": operator.lt,
-    "<=": operator.le,
-    "==": operator.eq,
-    "!=": operator.ne,
-}
-
 
 def _apply_operator(
     op: PredicateOp,
@@ -437,8 +441,8 @@ def _apply_operator(
         ValueError: If `op` is not a recognized `PredicateOp` value.
     """
     _validate_operator_threshold_types(op, threshold)
-    if op in _SCALAR_OPS:
-        return _SCALAR_OPS[op](x, threshold)
+    if op in SCALAR_OPS:
+        return SCALAR_OPS[op](x, threshold)
     if op == "in" and isinstance(threshold, set):
         return x in threshold
     if op == "not in" and isinstance(threshold, set):
@@ -461,7 +465,7 @@ def _validate_operator_threshold_types(
         TypeError: If a scalar operator is paired with a set threshold, or a
             membership operator is paired with a non-set threshold.
     """
-    if op in _SCALAR_OPS and isinstance(threshold, set):
+    if op in SCALAR_OPS and isinstance(threshold, set):
         raise TypeError(f"Scalar operator '{op}' cannot compare against a set")
     if op in {"in", "not in"} and not isinstance(threshold, set):
         raise TypeError(f"Membership operator '{op}' requires a set threshold")

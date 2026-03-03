@@ -31,10 +31,10 @@ from dfkit.decision_tree.preprocessing import (
 # Module-level constants
 # ---------------------------------------------------------------------------
 
-_MIN_TREE_DEPTH: int = 1  # Lower bound on tree depth accepted by the public API.
-_MAX_TREE_DEPTH: int = 6  # Caps tree depth to prevent overfitting and keep rules human-readable.
-_AUTO_MIN_SAMPLES_FRACTION: float = 0.02  # Scales the leaf floor with dataset size: 2% of n_rows.
-_AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of dataset size.
+MIN_TREE_DEPTH: int = 1  # Lower bound on tree depth accepted by the public API.
+MAX_TREE_DEPTH: int = 6  # Caps tree depth to prevent overfitting and keep rules human-readable.
+AUTO_MIN_SAMPLES_FRACTION: float = 0.02  # Scales the leaf floor with dataset size: 2% of n_rows.
+AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of dataset size.
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ def fit_tree(
         target_array (np.ndarray): 1-D target vector with shape `(n_samples,)`.
         task_type (DecisionTreeTask): Whether to fit a classifier or regressor.
         max_depth (int): Maximum depth of the tree. Must be between
-            `_MIN_TREE_DEPTH` and `_MAX_TREE_DEPTH` (1 to 6), inclusive.
+            `MIN_TREE_DEPTH` and `MAX_TREE_DEPTH` (1 to 6), inclusive.
         min_samples_leaf (int): Minimum number of samples required at a leaf node.
         random_state (int | None): Random seed for reproducibility.
 
@@ -67,10 +67,10 @@ def fit_tree(
 
     Raises:
         ValueError: If `max_depth` is outside the valid range
-            `[_MIN_TREE_DEPTH, _MAX_TREE_DEPTH]`.
+            `[MIN_TREE_DEPTH, MAX_TREE_DEPTH]`.
     """
-    if not (_MIN_TREE_DEPTH <= max_depth <= _MAX_TREE_DEPTH):
-        raise ValueError(f"max_depth must be between {_MIN_TREE_DEPTH} and {_MAX_TREE_DEPTH}, got {max_depth}.")
+    if not (MIN_TREE_DEPTH <= max_depth <= MAX_TREE_DEPTH):
+        raise ValueError(f"max_depth must be between {MIN_TREE_DEPTH} and {MAX_TREE_DEPTH}, got {max_depth}.")
     tree_cls = DecisionTreeClassifier if task_type == "classification" else DecisionTreeRegressor
     tree = tree_cls(
         max_depth=max_depth,
@@ -230,7 +230,7 @@ def build_decision_tree_result(
         features (list[str] | None): Feature column names to consider. When
             `None`, all columns except `target` are used.
         max_depth (int): Maximum tree depth; must be between 1 and
-            `_MAX_TREE_DEPTH` (inclusive).
+            `MAX_TREE_DEPTH` (inclusive).
         min_samples_leaf (int): Minimum samples required at a leaf node.
             Auto-adjusted upward when the dataset is large.
         task_type (str | None): `"classification"`, `"regression"`, or `None`
@@ -577,7 +577,7 @@ def _fit_and_assemble_result(
         kept_columns (list[str]): Feature column names that survived filtering.
         n_rows (int): Number of rows in `df_clean`.
         max_depth (int): Maximum tree depth; must be between 1 and
-            `_MAX_TREE_DEPTH` (inclusive).
+            `MAX_TREE_DEPTH` (inclusive).
         min_samples_leaf (int): User-supplied minimum samples per leaf.
         task_type (str | None): Task type override or `None` for auto-detection.
         random_state (int | None): Random seed for the sklearn tree estimator.
@@ -679,7 +679,7 @@ def _compute_effective_min_samples(n_rows: int, user_min_samples_leaf: int) -> i
     """Compute the effective `min_samples_leaf` to pass to the sklearn tree.
 
     The effective value is the maximum of the user-supplied value and an
-    auto-adjusted floor of `max(_AUTO_MIN_SAMPLES_FLOOR, 2% of n_rows)`.
+    auto-adjusted floor of `max(AUTO_MIN_SAMPLES_FLOOR, 2% of n_rows)`.
     This prevents overfitting on large datasets while respecting explicit
     user intent.
 
@@ -690,5 +690,5 @@ def _compute_effective_min_samples(n_rows: int, user_min_samples_leaf: int) -> i
     Returns:
         int: The effective `min_samples_leaf` value to use.
     """
-    auto_floor = max(_AUTO_MIN_SAMPLES_FLOOR, int(_AUTO_MIN_SAMPLES_FRACTION * n_rows))
+    auto_floor = max(AUTO_MIN_SAMPLES_FLOOR, int(AUTO_MIN_SAMPLES_FRACTION * n_rows))
     return max(user_min_samples_leaf, auto_floor)
