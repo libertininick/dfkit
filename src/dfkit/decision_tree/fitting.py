@@ -504,7 +504,7 @@ def _validate_inputs(
         features (list[str] | None): Requested feature column names, or `None`
             to use all non-target columns.
     """
-    _validate_target_column(df, target)
+    _validate_target_column_exists(df, target)
     feature_columns = features if features is not None else [col for col in df.columns if col != target]
     _validate_feature_columns_exist(df, feature_columns)
 
@@ -609,7 +609,7 @@ def _fit_and_assemble_result(
     )
 
 
-def _validate_target_column(df: pl.DataFrame, target: str) -> None:
+def _validate_target_column_exists(df: pl.DataFrame, target: str) -> None:
     """Raise `ValueError` if the target column does not exist in the DataFrame.
 
     Args:
