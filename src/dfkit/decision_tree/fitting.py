@@ -43,20 +43,20 @@ AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of data
 
 
 def fit_tree(
+    task_type: DecisionTreeTask,
     feature_matrix: np.ndarray,
     target_array: np.ndarray,
     *,
-    task_type: DecisionTreeTask,
-    max_depth: int,
-    min_samples_leaf: int,
+    max_depth: int = MAX_TREE_DEPTH,
+    min_samples_leaf: int = AUTO_MIN_SAMPLES_FLOOR,
     random_state: int | None = None,
 ) -> DecisionTree:
     """Fit a decision tree to the given feature matrix and target vector.
 
     Args:
+        task_type (DecisionTreeTask): Whether to fit a classifier or regressor.
         feature_matrix (np.ndarray): 2-D feature matrix with shape `(n_samples, n_features)`.
         target_array (np.ndarray): 1-D target vector with shape `(n_samples,)`.
-        task_type (DecisionTreeTask): Whether to fit a classifier or regressor.
         max_depth (int): Maximum depth of the tree. Must be between
             `MIN_TREE_DEPTH` and `MAX_TREE_DEPTH` (1 to 6), inclusive.
         min_samples_leaf (int): Minimum number of samples required at a leaf node.
@@ -592,9 +592,9 @@ def _fit_and_assemble_result(
     effective_min_samples = _compute_effective_min_samples(n_rows, min_samples_leaf)
 
     fitted_tree = fit_tree(
+        detected_task_type,
         feature_matrix,
         target_array,
-        task_type=detected_task_type,
         max_depth=max_depth,
         min_samples_leaf=effective_min_samples,
         random_state=random_state,

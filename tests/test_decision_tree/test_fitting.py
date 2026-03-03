@@ -40,9 +40,9 @@ class TestFitTree:
 
         # Act
         fitted_tree = fit_tree(
+            "classification",
             feature_matrix,
             target_array,
-            task_type="classification",
             max_depth=3,
             min_samples_leaf=5,
         )
@@ -57,9 +57,9 @@ class TestFitTree:
 
         # Act
         fitted_tree = fit_tree(
+            "regression",
             feature_matrix,
             target_array,
-            task_type="regression",
             max_depth=4,
             min_samples_leaf=5,
         )
@@ -75,9 +75,9 @@ class TestFitTree:
 
         # Act
         fitted_tree = fit_tree(
+            "classification",
             feature_matrix,
             target_array,
-            task_type="classification",
             max_depth=requested_max_depth,
             min_samples_leaf=5,
         )
@@ -93,9 +93,9 @@ class TestFitTree:
 
         # Act
         fitted_tree = fit_tree(
+            "regression",
             feature_matrix,
             target_array,
-            task_type="regression",
             max_depth=4,
             min_samples_leaf=requested_min_samples,
         )
@@ -222,9 +222,7 @@ class TestExtractRules:
         })
         feature_matrix, feature_encoders = encode_features(df, ["tenure_months", "support_tickets"])
         target_array, target_mapping = encode_target(df["churn"], "classification")
-        fitted_tree = fit_tree(
-            feature_matrix, target_array, task_type="classification", max_depth=3, min_samples_leaf=5
-        )
+        fitted_tree = fit_tree("classification", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
 
         # Act
         rules = extract_rules(
@@ -356,9 +354,7 @@ class TestExtractRules:
         })
         feature_matrix, feature_encoders = encode_features(df, ["claim_amount", "policy_age_years"])
         target_array, target_mapping = encode_target(df["is_fraud"], "classification")
-        fitted_tree = fit_tree(
-            feature_matrix, target_array, task_type="classification", max_depth=3, min_samples_leaf=5
-        )
+        fitted_tree = fit_tree("classification", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
 
         # Act
         rules = extract_rules(
@@ -488,7 +484,7 @@ class TestExtractRules:
         })
         feature_matrix, feature_encoders = encode_features(df, ["years_experience"])
         target_array, target_mapping = encode_target(df["annual_salary"], "regression")
-        fitted_tree = fit_tree(feature_matrix, target_array, task_type="regression", max_depth=3, min_samples_leaf=5)
+        fitted_tree = fit_tree("regression", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
 
         # Act
         rules = extract_rules(
@@ -619,9 +615,7 @@ class TestExtractRules:
         })
         feature_matrix, feature_encoders = encode_features(df, ["days_since_login", "page_views"])
         target_array, target_mapping = encode_target(df["renewed"], "classification")
-        fitted_tree = fit_tree(
-            feature_matrix, target_array, task_type="classification", max_depth=3, min_samples_leaf=5
-        )
+        fitted_tree = fit_tree("classification", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
         total_samples = len(df)
 
         # Act
@@ -750,7 +744,7 @@ class TestExtractRules:
         })
         feature_matrix, feature_encoders = encode_features(df, ["monthly_spend", "order_count"])
         target_array, target_mapping = encode_target(df["lifetime_value"], "regression")
-        fitted_tree = fit_tree(feature_matrix, target_array, task_type="regression", max_depth=2, min_samples_leaf=5)
+        fitted_tree = fit_tree("regression", feature_matrix, target_array, max_depth=2, min_samples_leaf=5)
 
         # Act
         rules = extract_rules(
@@ -830,9 +824,7 @@ class TestExtractRules:
         })
         feature_matrix, feature_encoders = encode_features(df, ["product_category"])
         target_array, target_mapping = encode_target(df["revenue_tier"], "classification")
-        fitted_tree = fit_tree(
-            feature_matrix, target_array, task_type="classification", max_depth=3, min_samples_leaf=5
-        )
+        fitted_tree = fit_tree("classification", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
 
         # Act
         rules = extract_rules(
@@ -970,9 +962,7 @@ class TestExtractRules:
         })
         feature_matrix, feature_encoders = encode_features(df, ["credit_score", "loan_amount"])
         target_array, target_mapping = encode_target(df["approved"], "classification")
-        fitted_tree = fit_tree(
-            feature_matrix, target_array, task_type="classification", max_depth=3, min_samples_leaf=5
-        )
+        fitted_tree = fit_tree("classification", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
 
         # Act
         rules = extract_rules(
@@ -1115,9 +1105,7 @@ class TestExtractRules:
         })
         feature_matrix, feature_encoders = encode_features(df, ["age", "bmi"])
         target_array, target_mapping = encode_target(df["outcome"], "classification")
-        fitted_tree = fit_tree(
-            feature_matrix, target_array, task_type="classification", max_depth=3, min_samples_leaf=5
-        )
+        fitted_tree = fit_tree("classification", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
 
         # Act
         rules = extract_rules(
@@ -1157,9 +1145,7 @@ class TestComputeMetrics:
         """Classification metrics should include `accuracy` in the range [0, 1]."""
         # Arrange — customer churn classification
         feature_matrix, target_array = _make_churn_classification_data()
-        fitted_tree = fit_tree(
-            feature_matrix, target_array, task_type="classification", max_depth=3, min_samples_leaf=5
-        )
+        fitted_tree = fit_tree("classification", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
 
         # Act
         metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task_type="classification")
@@ -1174,7 +1160,7 @@ class TestComputeMetrics:
         """Regression metrics should include both `r_squared` and `rmse` keys."""
         # Arrange — house price regression
         feature_matrix, target_array = _make_house_price_regression_data()
-        fitted_tree = fit_tree(feature_matrix, target_array, task_type="regression", max_depth=4, min_samples_leaf=5)
+        fitted_tree = fit_tree("regression", feature_matrix, target_array, max_depth=4, min_samples_leaf=5)
 
         # Act
         metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task_type="regression")
@@ -1199,9 +1185,7 @@ class TestComputeFeatureImportance:
         """
         # Arrange — employee attrition classification with two clearly relevant features
         feature_matrix, target_array = _make_churn_classification_data()
-        fitted_tree = fit_tree(
-            feature_matrix, target_array, task_type="classification", max_depth=4, min_samples_leaf=5
-        )
+        fitted_tree = fit_tree("classification", feature_matrix, target_array, max_depth=4, min_samples_leaf=5)
 
         # Act
         feature_importance = compute_feature_importance(fitted_tree, ["tenure_months", "support_tickets"])
@@ -1214,7 +1198,7 @@ class TestComputeFeatureImportance:
         """Feature importance keys should be feature names, not integer indices."""
         # Arrange — hotel booking regression
         feature_matrix, target_array = _make_house_price_regression_data()
-        fitted_tree = fit_tree(feature_matrix, target_array, task_type="regression", max_depth=3, min_samples_leaf=5)
+        fitted_tree = fit_tree("regression", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
         feature_names = ["sqft", "bedrooms"]
 
         # Act
@@ -1245,7 +1229,7 @@ class TestComputeFeatureImportance:
         feature_matrix = np.column_stack([sqft, noise])
         target_array = price
 
-        fitted_tree = fit_tree(feature_matrix, target_array, task_type="regression", max_depth=3, min_samples_leaf=5)
+        fitted_tree = fit_tree("regression", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
 
         # Act — use names that include the noise feature
         feature_importance = compute_feature_importance(fitted_tree, ["sqft", "noise_random"])
