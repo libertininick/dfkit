@@ -156,26 +156,26 @@ def filter_features(
 # ---------------------------------------------------------------------------
 
 
-def detect_task_type(
+def infer_task(
     series: pl.Series,
-    task_type_override: str | None,
+    task_override: str | None,
 ) -> DecisionTreeTask:
     """Infer whether the target column represents a classification or regression task.
 
-    When *task_type_override* is `"classification"` or `"regression"`, that
+    When *task_override* is `"classification"` or `"regression"`, that
     value is returned directly.  Otherwise the dtype and cardinality of *series*
     are used to make an automatic determination.
 
     Args:
         series (pl.Series): The target column to inspect.
-        task_type_override (str | None): Explicit override; `"auto"` or
+        task_override (str | None): Explicit override; `"auto"` or
             `None` triggers automatic detection.
 
     Returns:
         DecisionTreeTask: The detected task type.
     """
-    if task_type_override in {"classification", "regression"}:
-        return task_type_override  # type: ignore[return-value]
+    if task_override in {"classification", "regression"}:
+        return task_override  # type: ignore[return-value]
 
     column_type = DTYPE_TO_COLUMN_TYPE.get(series.dtype)
     if column_type in {"boolean", "categorical"}:
@@ -235,7 +235,7 @@ def encode_features(
 
 def encode_target(
     series: pl.Series,
-    task_type: DecisionTreeTask,
+    task: DecisionTreeTask,
 ) -> tuple[np.ndarray, dict[int, str] | None]:
     """Encode a target column into a 1-D numpy array.
 
@@ -246,8 +246,7 @@ def encode_target(
 
     Args:
         series (pl.Series): The target column to encode.
-        task_type (DecisionTreeTask): Determines the
-            encoding strategy.
+        task (DecisionTreeTask): Determines the encoding strategy.
 
     Returns:
         tuple[np.ndarray, dict[int, str] | None]: A 2-tuple of
@@ -261,7 +260,7 @@ def encode_target(
     if series.null_count() > 0:
         raise ValueError(f"Target column '{series.name}' contains null values. Remove or impute nulls before training.")
 
-    if task_type == "regression":
+    if task == "regression":
         return series.to_numpy(allow_copy=True).astype(np.float64), None
 
     label_encoder = LabelEncoder()

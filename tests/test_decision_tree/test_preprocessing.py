@@ -12,10 +12,10 @@ from pytest_check import check
 from dfkit.decision_tree.preprocessing import (
     ExcludedFeature,
     classify_column,
-    detect_task_type,
     encode_features,
     encode_target,
     filter_features,
+    infer_task,
 )
 
 # ---------------------------------------------------------------------------
@@ -381,7 +381,7 @@ class TestFilterFeatures:
 
 
 class TestDetectTaskType:
-    """Tests for detect_task_type: infer classification vs regression from target series."""
+    """Tests for infer_task: infer classification vs regression from target series."""
 
     def test_string_target_is_classification(self) -> None:
         """A target series with String dtype should be detected as classification."""
@@ -389,10 +389,10 @@ class TestDetectTaskType:
         target = pl.Series("churn_label", ["churned", "retained", "churned", "retained"])
 
         # Act
-        task_type = detect_task_type(target, None)
+        task = infer_task(target, None)
 
         # Assert
-        assert task_type == "classification"
+        assert task == "classification"
 
     def test_boolean_target_is_classification(self) -> None:
         """A target series with Boolean dtype should be detected as classification."""
@@ -400,10 +400,10 @@ class TestDetectTaskType:
         target = pl.Series("is_fraud", [True, False, False, True, False], dtype=pl.Boolean)
 
         # Act
-        task_type = detect_task_type(target, None)
+        task = infer_task(target, None)
 
         # Assert
-        assert task_type == "classification"
+        assert task == "classification"
 
     def test_string_target_with_utf8_alias_is_classification(self) -> None:
         """A target series created with pl.Utf8 (alias for String) should be detected as classification."""
@@ -411,10 +411,10 @@ class TestDetectTaskType:
         target = pl.Series("churn_status", ["churned", "retained", "retained"], dtype=pl.Utf8)
 
         # Act
-        task_type = detect_task_type(target, None)
+        task = infer_task(target, None)
 
         # Assert
-        assert task_type == "classification"
+        assert task == "classification"
 
     def test_float_target_is_regression(self) -> None:
         """A Float64 target series should be detected as regression."""
@@ -426,10 +426,10 @@ class TestDetectTaskType:
         )
 
         # Act
-        task_type = detect_task_type(target, None)
+        task = infer_task(target, None)
 
         # Assert
-        assert task_type == "regression"
+        assert task == "regression"
 
     def test_low_cardinality_int_is_classification(self) -> None:
         """An integer series with 5 unique values across 200 rows should be classification.
@@ -440,10 +440,10 @@ class TestDetectTaskType:
         target = pl.Series("rating", list(range(1, 6)) * 40, dtype=pl.Int32)
 
         # Act
-        task_type = detect_task_type(target, None)
+        task = infer_task(target, None)
 
         # Assert
-        assert task_type == "classification"
+        assert task == "classification"
 
     def test_high_cardinality_int_is_regression(self) -> None:
         """An integer series with 150 unique values should be detected as regression.
@@ -454,10 +454,10 @@ class TestDetectTaskType:
         target = pl.Series("transaction_id", list(range(150)), dtype=pl.Int64)
 
         # Act
-        task_type = detect_task_type(target, None)
+        task = infer_task(target, None)
 
         # Assert
-        assert task_type == "regression"
+        assert task == "regression"
 
     def test_override_to_classification(self) -> None:
         """A float target with a 'classification' override should return 'classification'."""
@@ -465,10 +465,10 @@ class TestDetectTaskType:
         target = pl.Series("score", [1.0, 2.0, 3.0, 1.0, 2.0], dtype=pl.Float32)
 
         # Act
-        task_type = detect_task_type(target, "classification")
+        task = infer_task(target, "classification")
 
         # Assert
-        assert task_type == "classification"
+        assert task == "classification"
 
     def test_override_to_regression(self) -> None:
         """A string target with a 'regression' override should return 'regression'."""
@@ -476,10 +476,10 @@ class TestDetectTaskType:
         target = pl.Series("label", ["yes", "no", "yes", "yes"])
 
         # Act
-        task_type = detect_task_type(target, "regression")
+        task = infer_task(target, "regression")
 
         # Assert
-        assert task_type == "regression"
+        assert task == "regression"
 
     def test_auto_override_behaves_same_as_none(self) -> None:
         """Both None and 'auto' should trigger automatic detection and produce the same result."""
@@ -487,14 +487,14 @@ class TestDetectTaskType:
         target = pl.Series("category", ["A", "B", "A", "C", "B"])
 
         # Act
-        task_type_none = detect_task_type(target, None)
-        task_type_auto = detect_task_type(target, "auto")
+        task_none = infer_task(target, None)
+        task_auto = infer_task(target, "auto")
 
         # Assert
         with check:
-            assert task_type_none == "classification"
+            assert task_none == "classification"
         with check:
-            assert task_type_none == task_type_auto
+            assert task_none == task_auto
 
 
 class TestEncodeFeatures:

@@ -21,10 +21,10 @@ from dfkit.decision_tree.models import (
 from dfkit.decision_tree.preprocessing import (
     THRESHOLD_DECIMAL_PLACES,
     FeatureEncoder,
-    detect_task_type,
     encode_features,
     encode_target,
     filter_features,
+    infer_task,
 )
 
 # ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of data
 
 
 def fit_tree(
-    task_type: DecisionTreeTask,
+    task: DecisionTreeTask,
     feature_matrix: np.ndarray,
     target_array: np.ndarray,
     *,
@@ -54,7 +54,7 @@ def fit_tree(
     """Fit a decision tree to the given feature matrix and target vector.
 
     Args:
-        task_type (DecisionTreeTask): Whether to fit a classifier or regressor.
+        task (DecisionTreeTask): Whether to fit a classifier or regressor.
         feature_matrix (np.ndarray): 2-D feature matrix with shape `(n_samples, n_features)`.
         target_array (np.ndarray): 1-D target vector with shape `(n_samples,)`.
         max_depth (int): Maximum depth of the tree. Must be between
@@ -71,7 +71,7 @@ def fit_tree(
     """
     if not (MIN_TREE_DEPTH <= max_depth <= MAX_TREE_DEPTH):
         raise ValueError(f"max_depth must be between {MIN_TREE_DEPTH} and {MAX_TREE_DEPTH}, got {max_depth}.")
-    tree_cls = DecisionTreeClassifier if task_type == "classification" else DecisionTreeRegressor
+    tree_cls = DecisionTreeClassifier if task == "classification" else DecisionTreeRegressor
     tree = tree_cls(
         max_depth=max_depth,
         min_samples_leaf=min_samples_leaf,
@@ -93,7 +93,7 @@ def extract_rules(
     *,
     feature_encoders: list[FeatureEncoder],
     target_mapping: dict[int, str] | None,
-    task_type: DecisionTreeTask,
+    task: DecisionTreeTask,
 ) -> list[ClassificationRule] | list[RegressionRule]:
     """Extract human-readable rules from a fitted decision tree.
 
@@ -117,19 +117,19 @@ def extract_rules(
             describing how each feature column was encoded.
         target_mapping (dict[int, str] | None): Maps integer codes back to
             class labels for classification; `None` for regression.
-        task_type (DecisionTreeTask): Whether the tree is a classifier or regressor.
+        task (DecisionTreeTask): Whether the tree is a classifier or regressor.
 
     Returns:
         list[ClassificationRule] | list[RegressionRule]: One rule per leaf node.
     """
-    leaf_assignments = tree.apply(feature_matrix) if task_type == "regression" else None
+    leaf_assignments = tree.apply(feature_matrix) if task == "regression" else None
     rules: list[ClassificationRule] | list[RegressionRule] = []
     _walk_tree(
         tree=tree,
         target_array=target_array,
         feature_encoders=feature_encoders,
         target_mapping=target_mapping,
-        task_type=task_type,
+        task=task,
         leaf_assignments=leaf_assignments,
         node_id=0,
         path_predicates=[],
@@ -148,7 +148,7 @@ def compute_metrics(
     feature_matrix: np.ndarray,
     target_array: np.ndarray,
     *,
-    task_type: DecisionTreeTask,
+    task: DecisionTreeTask,
 ) -> dict[str, float]:
     """Compute evaluation metrics for a fitted decision tree.
 
@@ -156,14 +156,14 @@ def compute_metrics(
         tree (DecisionTree): A fitted sklearn tree.
         feature_matrix (np.ndarray): 2-D feature matrix with shape `(n_samples, n_features)`.
         target_array (np.ndarray): 1-D target vector with shape `(n_samples,)`.
-        task_type (DecisionTreeTask): Whether the tree is a classifier or regressor.
+        task (DecisionTreeTask): Whether the tree is a classifier or regressor.
 
     Returns:
         dict[str, float]: For classification: `{"accuracy": <float>}`.
             For regression: `{"r_squared": <float>, "rmse": <float>}`.
     """
     predictions = tree.predict(feature_matrix)
-    if task_type == "classification":
+    if task == "classification":
         return {"accuracy": float(accuracy_score(target_array, predictions))}
     return {
         "r_squared": float(r2_score(target_array, predictions)),
@@ -215,7 +215,7 @@ def build_decision_tree_result(
     features: list[str] | None,
     max_depth: int,
     min_samples_leaf: int,
-    task_type: str | None,
+    task: str | None,
     random_state: int | None = None,
 ) -> DecisionTreeResult:
     """Orchestrate the full decision tree fitting pipeline.
@@ -233,7 +233,7 @@ def build_decision_tree_result(
             `MAX_TREE_DEPTH` (inclusive).
         min_samples_leaf (int): Minimum samples required at a leaf node.
             Auto-adjusted upward when the dataset is large.
-        task_type (str | None): `"classification"`, `"regression"`, or `None`
+        task (str | None): `"classification"`, `"regression"`, or `None`
             for automatic detection.
         random_state (int | None): Random seed passed to the sklearn tree for
             reproducibility.  `None` means non-deterministic.
@@ -267,7 +267,7 @@ def build_decision_tree_result(
         n_rows=n_rows,
         max_depth=max_depth,
         min_samples_leaf=min_samples_leaf,
-        task_type=task_type,
+        task_override=task,
         random_state=random_state,
     )
 
@@ -283,7 +283,7 @@ def _walk_tree(
     target_array: np.ndarray,
     feature_encoders: list[FeatureEncoder],
     target_mapping: dict[int, str] | None,
-    task_type: DecisionTreeTask,
+    task: DecisionTreeTask,
     leaf_assignments: np.ndarray | None,
     node_id: int,
     path_predicates: list[Predicate],
@@ -296,7 +296,7 @@ def _walk_tree(
         target_array (np.ndarray): 1-D target vector used to fit the tree.
         feature_encoders (list[FeatureEncoder]): Parallel list of encoders.
         target_mapping (dict[int, str] | None): Class label mapping for classification.
-        task_type (DecisionTreeTask): Whether the tree is a classifier or regressor.
+        task (DecisionTreeTask): Whether the tree is a classifier or regressor.
         leaf_assignments (np.ndarray | None): Per-sample leaf node IDs from
             `tree.apply(feature_matrix)`, used to compute per-leaf std for regression.
         node_id (int): The current node index in `tree.tree_`.
@@ -315,7 +315,7 @@ def _walk_tree(
             sklearn_tree=sklearn_tree,
             node_id=node_id,
             path_predicates=path_predicates,
-            task_type=task_type,
+            task=task,
             target_mapping=target_mapping,
             target_array=target_array,
             leaf_assignments=leaf_assignments,
@@ -333,7 +333,7 @@ def _walk_tree(
         "target_array": target_array,
         "feature_encoders": feature_encoders,
         "target_mapping": target_mapping,
-        "task_type": task_type,
+        "task": task,
         "leaf_assignments": leaf_assignments,
         "rules": rules,
     }
@@ -381,7 +381,7 @@ def _build_leaf_rule(
     sklearn_tree: Any,
     node_id: int,
     path_predicates: list[Predicate],
-    task_type: DecisionTreeTask,
+    task: DecisionTreeTask,
     target_mapping: dict[int, str] | None,
     target_array: np.ndarray,
     leaf_assignments: np.ndarray | None,
@@ -394,7 +394,7 @@ def _build_leaf_rule(
         node_id (int): Index of the leaf node in `sklearn_tree`.
         path_predicates (list[Predicate]): Predicates accumulated along the
             path from root to this leaf.
-        task_type (DecisionTreeTask): Whether to produce a classification or
+        task (DecisionTreeTask): Whether to produce a classification or
             regression rule.
         target_mapping (dict[int, str] | None): Class label mapping for
             classification; `None` for regression.
@@ -409,7 +409,7 @@ def _build_leaf_rule(
     node_value = sklearn_tree.value[node_id]
     n_samples = int(sklearn_tree.n_node_samples[node_id])
 
-    if task_type == "classification":
+    if task == "classification":
         return _build_classification_rule(
             node_value, n_samples, path_predicates=path_predicates, target_mapping=target_mapping
         )
@@ -566,7 +566,7 @@ def _fit_and_assemble_result(
     n_rows: int,
     max_depth: int,
     min_samples_leaf: int,
-    task_type: str | None,
+    task_override: str | None,
     random_state: int | None,
 ) -> DecisionTreeResult:
     """Encode data, fit a tree, extract rules, and assemble the result object.
@@ -579,20 +579,20 @@ def _fit_and_assemble_result(
         max_depth (int): Maximum tree depth; must be between 1 and
             `MAX_TREE_DEPTH` (inclusive).
         min_samples_leaf (int): User-supplied minimum samples per leaf.
-        task_type (str | None): Task type override or `None` for auto-detection.
+        task_override (str | None): Task type override or `None` for auto-detection.
         random_state (int | None): Random seed for the sklearn tree estimator.
 
     Returns:
         DecisionTreeResult: The fully assembled decision tree result.
     """
-    detected_task_type = detect_task_type(df_clean[target], task_type)
+    task = infer_task(df_clean[target], task_override)
     feature_matrix, feature_encoders = encode_features(df_clean, kept_columns)
-    target_array, target_mapping = encode_target(df_clean[target], detected_task_type)
+    target_array, target_mapping = encode_target(df_clean[target], task)
 
     effective_min_samples = _compute_effective_min_samples(n_rows, min_samples_leaf)
 
     fitted_tree = fit_tree(
-        detected_task_type,
+        task,
         feature_matrix,
         target_array,
         max_depth=max_depth,
@@ -605,9 +605,9 @@ def _fit_and_assemble_result(
         target_array,
         feature_encoders=feature_encoders,
         target_mapping=target_mapping,
-        task_type=detected_task_type,
+        task=task,
     )
-    metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task_type=detected_task_type)
+    metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task=task)
     feature_importances = compute_feature_importance(fitted_tree, kept_columns)
     # `kept_columns` that have zero importance are dropped from `features`;
     # only columns that actually contributed to splits appear in `feature_importances`.
@@ -615,7 +615,7 @@ def _fit_and_assemble_result(
 
     return DecisionTreeResult(
         target=target,
-        task=detected_task_type,
+        task=task,
         features=features,
         rules=rules,
         feature_importances=feature_importances,

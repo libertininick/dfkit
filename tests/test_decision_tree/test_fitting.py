@@ -34,7 +34,7 @@ class TestFitTree:
     """Tests for `fit_tree`: fits sklearn decision trees with configurable hyperparameters."""
 
     def test_fit_classifier_returns_decision_tree_classifier(self) -> None:
-        """Fitting with `task_type='classification'` should return a DecisionTreeClassifier."""
+        """Fitting with `task='classification'` should return a DecisionTreeClassifier."""
         # Arrange
         feature_matrix, target_array = _make_churn_classification_data()
 
@@ -51,7 +51,7 @@ class TestFitTree:
         assert isinstance(fitted_tree, DecisionTreeClassifier)
 
     def test_fit_regressor_returns_decision_tree_regressor(self) -> None:
-        """Fitting with `task_type='regression'` should return a DecisionTreeRegressor."""
+        """Fitting with `task='regression'` should return a DecisionTreeRegressor."""
         # Arrange
         feature_matrix, target_array = _make_house_price_regression_data()
 
@@ -231,7 +231,7 @@ class TestExtractRules:
             target_array,
             feature_encoders=feature_encoders,
             target_mapping=target_mapping,
-            task_type="classification",
+            task="classification",
         )
 
         # Assert
@@ -363,7 +363,7 @@ class TestExtractRules:
             target_array,
             feature_encoders=feature_encoders,
             target_mapping=target_mapping,
-            task_type="classification",
+            task="classification",
         )
 
         # Assert
@@ -493,7 +493,7 @@ class TestExtractRules:
             target_array,
             feature_encoders=feature_encoders,
             target_mapping=target_mapping,
-            task_type="regression",
+            task="regression",
         )
 
         # Assert
@@ -625,7 +625,7 @@ class TestExtractRules:
             target_array,
             feature_encoders=feature_encoders,
             target_mapping=target_mapping,
-            task_type="classification",
+            task="classification",
         )
 
         # Assert
@@ -753,7 +753,7 @@ class TestExtractRules:
             target_array,
             feature_encoders=feature_encoders,
             target_mapping=target_mapping,
-            task_type="regression",
+            task="regression",
         )
 
         # Assert — every predicate variable must be a known feature name
@@ -833,7 +833,7 @@ class TestExtractRules:
             target_array,
             feature_encoders=feature_encoders,
             target_mapping=target_mapping,
-            task_type="classification",
+            task="classification",
         )
 
         # Assert — categorical predicates must use "in" or "not in"
@@ -971,7 +971,7 @@ class TestExtractRules:
             target_array,
             feature_encoders=feature_encoders,
             target_mapping=target_mapping,
-            task_type="classification",
+            task="classification",
         )
 
         # Assert — predicates on numeric features must use "<=" or ">"
@@ -1114,7 +1114,7 @@ class TestExtractRules:
             target_array,
             feature_encoders=feature_encoders,
             target_mapping=target_mapping,
-            task_type="classification",
+            task="classification",
         )
 
         # Assert — for the first sample, find the matching rule and verify its prediction
@@ -1148,7 +1148,7 @@ class TestComputeMetrics:
         fitted_tree = fit_tree("classification", feature_matrix, target_array, max_depth=3, min_samples_leaf=5)
 
         # Act
-        metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task_type="classification")
+        metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task="classification")
 
         # Assert
         with check:
@@ -1163,7 +1163,7 @@ class TestComputeMetrics:
         fitted_tree = fit_tree("regression", feature_matrix, target_array, max_depth=4, min_samples_leaf=5)
 
         # Act
-        metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task_type="regression")
+        metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task="regression")
 
         # Assert
         with check:
@@ -1270,7 +1270,7 @@ class TestBuildDecisionTreeResult:
             features=["tenure_months", "support_tickets"],
             max_depth=3,
             min_samples_leaf=5,
-            task_type=None,
+            task=None,
         )
 
         # Assert
@@ -1309,7 +1309,7 @@ class TestBuildDecisionTreeResult:
             features=["sqft"],
             max_depth=3,
             min_samples_leaf=5,
-            task_type=None,
+            task=None,
         )
 
         # Assert
@@ -1353,7 +1353,7 @@ class TestBuildDecisionTreeResult:
             features=None,
             max_depth=3,
             min_samples_leaf=5,
-            task_type=None,
+            task=None,
         )
 
         # Assert — both non-target columns appear in features
@@ -1364,8 +1364,8 @@ class TestBuildDecisionTreeResult:
         with check:
             assert "readmitted" not in result.features
 
-    def test_task_type_override(self) -> None:
-        """A numeric target with `task_type='classification'` should produce a classification result."""
+    def test_task_override(self) -> None:
+        """A numeric target with `task='classification'` should produce a classification result."""
         # Arrange — satisfaction rating 1-5 treated as classification
         rng = np.random.default_rng(21)
         n_rows = 60
@@ -1383,7 +1383,7 @@ class TestBuildDecisionTreeResult:
             features=["wait_time_minutes"],
             max_depth=3,
             min_samples_leaf=5,
-            task_type="classification",
+            task="classification",
         )
 
         # Assert
@@ -1406,7 +1406,7 @@ class TestBuildDecisionTreeResult:
                 features=None,
                 max_depth=3,
                 min_samples_leaf=2,
-                task_type=None,
+                task=None,
             )
 
     def test_error_feature_not_found(self) -> None:
@@ -1425,7 +1425,7 @@ class TestBuildDecisionTreeResult:
                 features=["age", "missing_feature"],
                 max_depth=3,
                 min_samples_leaf=2,
-                task_type=None,
+                task=None,
             )
 
     def test_error_all_features_excluded(self) -> None:
@@ -1444,7 +1444,7 @@ class TestBuildDecisionTreeResult:
                 features=["constant_col"],
                 max_depth=3,
                 min_samples_leaf=2,
-                task_type=None,
+                task=None,
             )
 
     def test_error_target_all_null(self) -> None:
@@ -1463,7 +1463,7 @@ class TestBuildDecisionTreeResult:
                 features=["age"],
                 max_depth=3,
                 min_samples_leaf=2,
-                task_type=None,
+                task=None,
             )
 
     def test_error_target_single_value(self) -> None:
@@ -1482,7 +1482,7 @@ class TestBuildDecisionTreeResult:
                 features=["age"],
                 max_depth=3,
                 min_samples_leaf=2,
-                task_type=None,
+                task=None,
             )
 
     def test_error_too_few_samples(self) -> None:
@@ -1501,7 +1501,7 @@ class TestBuildDecisionTreeResult:
                 features=["score"],
                 max_depth=3,
                 min_samples_leaf=10,
-                task_type=None,
+                task=None,
             )
 
     def test_error_max_depth_above_maximum(self) -> None:
@@ -1520,7 +1520,7 @@ class TestBuildDecisionTreeResult:
                 features=["score"],
                 max_depth=10,
                 min_samples_leaf=2,
-                task_type=None,
+                task=None,
             )
 
     def test_error_max_depth_below_minimum(self) -> None:
@@ -1539,7 +1539,7 @@ class TestBuildDecisionTreeResult:
                 features=["score"],
                 max_depth=0,
                 min_samples_leaf=2,
-                task_type=None,
+                task=None,
             )
 
     def test_max_depth_at_maximum_accepted(self) -> None:
@@ -1568,7 +1568,7 @@ class TestBuildDecisionTreeResult:
             features=["score"],
             max_depth=6,
             min_samples_leaf=5,
-            task_type=None,
+            task=None,
         )
 
         # Assert
@@ -1600,7 +1600,7 @@ class TestBuildDecisionTreeResult:
             features=["age"],
             max_depth=3,
             min_samples_leaf=5,
-            task_type=None,
+            task=None,
         )
 
         # Assert — null rows in features must not drop rows; all n_rows are used for fitting
@@ -1629,7 +1629,7 @@ class TestBuildDecisionTreeResult:
             features=["annual_income"],
             max_depth=3,
             min_samples_leaf=5,
-            task_type=None,
+            task=None,
         )
 
         # Assert — sample_count should equal n_rows minus the 10 null target rows
@@ -1657,7 +1657,7 @@ class TestBuildDecisionTreeResult:
             features=["word_count", "link_count"],
             max_depth=3,
             min_samples_leaf=5,
-            task_type=None,
+            task=None,
         )
 
         # Assert
@@ -1700,7 +1700,7 @@ class TestBuildDecisionTreeResult:
             features=["order_value_usd", "shipping_method"],
             max_depth=3,
             min_samples_leaf=5,
-            task_type=None,
+            task=None,
         )
 
         # Assert
@@ -1730,7 +1730,7 @@ class TestBuildDecisionTreeResult:
             features=["driver_age"],
             max_depth=3,
             min_samples_leaf=5,
-            task_type=None,
+            task=None,
         )
 
         # Assert
