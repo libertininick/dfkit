@@ -20,7 +20,6 @@ from dfkit.decision_tree.models import (
 )
 from dfkit.decision_tree.preprocessing import (
     THRESHOLD_DECIMAL_PLACES,
-    ExcludedFeature,
     FeatureEncoder,
     detect_task_type,
     encode_features,
@@ -265,7 +264,6 @@ def build_decision_tree_result(
         df_clean=df_clean,
         target=target,
         kept_columns=kept_columns,
-        excluded_features=excluded_features,
         n_rows=n_rows,
         max_depth=max_depth,
         min_samples_leaf=min_samples_leaf,
@@ -457,7 +455,7 @@ def _build_classification_rule(
         prediction = class_index
 
     return ClassificationRule(
-        task_type="classification",
+        task="classification",
         predicates=path_predicates,
         prediction=prediction,
         samples=n_samples,
@@ -502,7 +500,7 @@ def _build_regression_rule(
             leaf_std = float(np.std(leaf_target))
 
     return RegressionRule(
-        task_type="regression",
+        task="regression",
         predicates=path_predicates,
         prediction=round(prediction, 4),
         samples=n_samples,
@@ -565,7 +563,6 @@ def _fit_and_assemble_result(
     target: str,
     *,
     kept_columns: list[str],
-    excluded_features: list[ExcludedFeature],
     n_rows: int,
     max_depth: int,
     min_samples_leaf: int,
@@ -578,7 +575,6 @@ def _fit_and_assemble_result(
         df_clean (pl.DataFrame): DataFrame with null-target rows removed.
         target (str): Target column name.
         kept_columns (list[str]): Feature column names that survived filtering.
-        excluded_features (list[ExcludedFeature]): Excluded features with reasons.
         n_rows (int): Number of rows in `df_clean`.
         max_depth (int): Maximum tree depth; must be between 1 and
             `_MAX_TREE_DEPTH` (inclusive).
@@ -612,22 +608,17 @@ def _fit_and_assemble_result(
         task_type=detected_task_type,
     )
     metrics = compute_metrics(fitted_tree, feature_matrix, target_array, task_type=detected_task_type)
-    feature_importance = compute_feature_importance(fitted_tree, kept_columns)
-    # `kept_columns` that have zero importance are dropped from `features_used`;
-    # only columns that actually contributed to splits appear in `feature_importance`.
-    features_used = [col for col in kept_columns if col in feature_importance]
-    zero_importance = [
-        ExcludedFeature(name=col, reason="zero importance") for col in kept_columns if col not in feature_importance
-    ]
-    features_excluded_labels = [f"{ef.name} ({ef.reason})" for ef in [*excluded_features, *zero_importance]]
+    feature_importances = compute_feature_importance(fitted_tree, kept_columns)
+    # `kept_columns` that have zero importance are dropped from `features`;
+    # only columns that actually contributed to splits appear in `feature_importances`.
+    features = [col for col in kept_columns if col in feature_importances]
 
     return DecisionTreeResult(
         target=target,
-        task_type=detected_task_type,
-        features_used=features_used,
-        features_excluded=features_excluded_labels,
+        task=detected_task_type,
+        features=features,
         rules=rules,
-        feature_importance=feature_importance,
+        feature_importances=feature_importances,
         metrics=metrics,
         sample_count=n_rows,
         depth=fitted_tree.get_depth(),

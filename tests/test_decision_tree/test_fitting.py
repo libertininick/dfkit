@@ -1291,7 +1291,7 @@ class TestBuildDecisionTreeResult:
 
         # Assert
         with check:
-            assert result.task_type == "classification"
+            assert result.task == "classification"
         with check:
             assert result.target == "churn"
         with check:
@@ -1307,7 +1307,7 @@ class TestBuildDecisionTreeResult:
     def test_regression_end_to_end(self) -> None:
         """Full pipeline with a float target should return a `DecisionTreeResult` with regression rules."""
         # Arrange — real estate price prediction using a single strong predictor so the
-        # pipeline never hits the zero-importance/features_used mismatch edge case.
+        # pipeline never hits the zero-importance/features mismatch edge case.
         rng = np.random.default_rng(13)
         n_rows = 80
         sqft = rng.uniform(600, 3000, n_rows).tolist()
@@ -1330,7 +1330,7 @@ class TestBuildDecisionTreeResult:
 
         # Assert
         with check:
-            assert result.task_type == "regression"
+            assert result.task == "regression"
         with check:
             assert "r_squared" in result.metrics
         with check:
@@ -1345,8 +1345,8 @@ class TestBuildDecisionTreeResult:
         """When `features=None`, all non-target columns should be used as features.
 
         Both non-target columns are made predictive so neither has zero importance,
-        avoiding the pipeline constraint that requires all `features_used` entries
-        to appear in `feature_importance`.
+        avoiding the pipeline constraint that requires all `features` entries
+        to appear in `feature_importances`.
         """
         # Arrange — hospital readmission: both age and bmi drive the label so
         # the tree is guaranteed to assign non-zero importance to each.
@@ -1372,14 +1372,13 @@ class TestBuildDecisionTreeResult:
             task_type=None,
         )
 
-        # Assert — both non-target columns appear in features_used or features_excluded
-        all_accounted = set(result.features_used) | {exc.partition(" (")[0] for exc in result.features_excluded}
+        # Assert — both non-target columns appear in features
         with check:
-            assert "age" in all_accounted
+            assert "age" in result.features
         with check:
-            assert "bmi" in all_accounted
+            assert "bmi" in result.features
         with check:
-            assert "readmitted" not in all_accounted
+            assert "readmitted" not in result.features
 
     def test_task_type_override(self) -> None:
         """A numeric target with `task_type='classification'` should produce a classification result."""
@@ -1405,7 +1404,7 @@ class TestBuildDecisionTreeResult:
 
         # Assert
         with check:
-            assert result.task_type == "classification"
+            assert result.task == "classification"
 
     def test_error_target_not_found(self) -> None:
         """A target column that does not exist should raise a `ValueError` with a descriptive message."""
@@ -1679,14 +1678,14 @@ class TestBuildDecisionTreeResult:
 
         # Assert
         with check:
-            assert result.task_type == "classification"
+            assert result.task == "classification"
 
     def test_mixed_feature_types(self) -> None:
         """A DataFrame with numeric and string features should produce a valid result.
 
         Uses two features that both drive the label so neither has zero importance,
-        avoiding the pipeline constraint that requires all `features_used` entries
-        to appear in `feature_importance`. One numeric and one categorical feature
+        avoiding the pipeline constraint that requires all `features` entries
+        to appear in `feature_importances`. One numeric and one categorical feature
         exercise the mixed-type encoding path.
         """
         # Arrange — e-commerce order delivery: both order_value and shipping_method
@@ -1722,14 +1721,14 @@ class TestBuildDecisionTreeResult:
 
         # Assert
         with check:
-            assert result.task_type == "classification"
+            assert result.task == "classification"
         with check:
             assert result.sample_count == n_rows
 
     def test_result_rules_contain_predicates(self) -> None:
         """Every rule in the result's `rules` list should have a `list[Predicate]` in `predicates`."""
         # Arrange — vehicle insurance premium estimation using driver_age as the sole
-        # predictor so the pipeline never hits the zero-importance/features_used mismatch.
+        # predictor so the pipeline never hits the zero-importance/features mismatch.
         rng = np.random.default_rng(59)
         n_rows = 80
         driver_age = rng.integers(18, 75, n_rows).tolist()

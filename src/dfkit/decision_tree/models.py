@@ -122,7 +122,7 @@ class ClassificationRule(BaseModel):
     label and the confidence at that leaf.
 
     Attributes:
-        task_type (Literal["classification"]): Discriminator field; always
+        task (Literal["classification"]): Discriminator field; always
             `"classification"`.
         predicates (list[Predicate]): Predicates along the path from root to
             this leaf, e.g.
@@ -137,7 +137,7 @@ class ClassificationRule(BaseModel):
 
     Examples:
         >>> rule = ClassificationRule(
-        ...     task_type="classification",
+        ...     task="classification",
         ...     predicates=[
         ...         Predicate(variable="tenure_months", operator=">", value=6),
         ...         Predicate(variable="support_tickets", operator="<=", value=3),
@@ -148,7 +148,7 @@ class ClassificationRule(BaseModel):
         ... )
     """
 
-    task_type: Literal["classification"] = Field(
+    task: Literal["classification"] = Field(
         description='Discriminator field. Always "classification".',
     )
     predicates: list[Predicate] = Field(
@@ -182,7 +182,7 @@ class RegressionRule(BaseModel):
     target value and the spread of target values at that leaf.
 
     Attributes:
-        task_type (Literal["regression"]): Discriminator field; always
+        task (Literal["regression"]): Discriminator field; always
             `"regression"`.
         predicates (list[Predicate]): Predicates along the path from root to
             this leaf, e.g.
@@ -197,7 +197,7 @@ class RegressionRule(BaseModel):
 
     Examples:
         >>> rule = RegressionRule(
-        ...     task_type="regression",
+        ...     task="regression",
         ...     predicates=[
         ...         Predicate(variable="age", operator=">", value=30),
         ...         Predicate(variable="income", operator="<=", value=50000),
@@ -208,7 +208,7 @@ class RegressionRule(BaseModel):
         ... )
     """
 
-    task_type: Literal["regression"] = Field(
+    task: Literal["regression"] = Field(
         description='Discriminator field. Always "regression".',
     )
     predicates: list[Predicate] = Field(
@@ -234,7 +234,7 @@ class RegressionRule(BaseModel):
 # Use this alias when accepting a rule of either task type; Pydantic will select the correct model automatically.
 type DecisionTreeRule = Annotated[
     ClassificationRule | RegressionRule,
-    Field(discriminator="task_type"),
+    Field(discriminator="task"),
 ]
 
 
@@ -245,18 +245,16 @@ class DecisionTreeResult(BaseModel):
     evaluation metrics, and tree structure metadata into a single serializable object.
 
     Attributes:
-        target (str): Target column name used as the prediction label.
-        task_type (DecisionTreeTask): Either
+        task (DecisionTreeTask): Either
             `"classification"` or `"regression"`.
-        features_used (list[str]): Feature column names that were included when
+        features (list[str]): Feature column names that were included when
             fitting the tree.
-        features_excluded (list[str]): Feature column names that were excluded,
-            each annotated with the reason for exclusion.
+        target (str): Target column name used as the prediction label.
         rules (list[ClassificationRule] | list[RegressionRule]): One rule per
             leaf node, describing the predicates and prediction for that path
-            through the tree. Each rule's `task_type` field identifies its
+            through the tree. Each rule's `task` field identifies its
             concrete type.
-        feature_importance (dict[str, float]): Mapping of feature name to
+        feature_importances (dict[str, float]): Mapping of feature name to
             importance score, sorted in descending order of importance. Scores
             must sum to 1.0 across all features used.
         metrics (dict[str, float]): Evaluation metrics for the fitted tree,
@@ -268,13 +266,12 @@ class DecisionTreeResult(BaseModel):
 
     Examples:
         >>> result = DecisionTreeResult(
+        ...     task="classification",
+        ...     features=["tenure_months", "support_tickets"],
         ...     target="churn",
-        ...     task_type="classification",
-        ...     features_used=["tenure_months", "support_tickets"],
-        ...     features_excluded=["customer_id (unique identifier)"],
         ...     rules=[
         ...         ClassificationRule(
-        ...             task_type="classification",
+        ...             task="classification",
         ...             predicates=[
         ...                 Predicate(variable="tenure_months", operator="<=", value=6),
         ...             ],
@@ -283,7 +280,7 @@ class DecisionTreeResult(BaseModel):
         ...             confidence=0.87,
         ...         ),
         ...     ],
-        ...     feature_importance={"tenure_months": 0.7, "support_tickets": 0.3},
+        ...     feature_importances={"tenure_months": 0.7, "support_tickets": 0.3},
         ...     metrics={"accuracy": 0.89},
         ...     sample_count=500,
         ...     depth=3,
@@ -291,28 +288,23 @@ class DecisionTreeResult(BaseModel):
         ... )
     """
 
-    target: str = Field(
-        description="Target column name used as the prediction label.",
-    )
-    task_type: DecisionTreeTask = Field(
+    task: DecisionTreeTask = Field(
         description='Task type: either "classification" or "regression".',
     )
-    features_used: list[str] = Field(
+    features: list[str] = Field(
         description="Feature column names that were included when fitting the tree.",
     )
-    features_excluded: list[str] = Field(
-        description=(
-            "Feature column names that were excluded from fitting, each entry annotated with the reason for exclusion."
-        ),
+    target: str = Field(
+        description="Target column name used as the prediction label.",
     )
     rules: list[ClassificationRule] | list[RegressionRule] = Field(
         description=(
             "One rule per leaf node, describing the path predicates and prediction "
-            "for every reachable outcome of the tree. Each rule's task_type field "
+            "for every reachable outcome of the tree. Each rule's task field "
             "identifies whether it is a ClassificationRule or RegressionRule."
         ),
     )
-    feature_importance: dict[str, float] = Field(
+    feature_importances: dict[str, float] = Field(
         description=(
             "Mapping of feature name to importance score, sorted in descending "
             "order. Scores must sum to 1.0 across all features used."
@@ -337,13 +329,13 @@ class DecisionTreeResult(BaseModel):
         description="Number of leaf nodes in the fitted tree.",
     )
 
-    @field_validator("feature_importance", mode="after")
+    @field_validator("feature_importances", mode="after")
     @classmethod
     def _validate_feature_importance_sums_to_one(cls, value: dict[str, float]) -> dict[str, float]:
         """Validate that feature importance scores sum to 1.0.
 
         Args:
-            value (dict[str, float]): The feature importance mapping to validate.
+            value (dict[str, float]): The feature importances mapping to validate.
 
         Returns:
             dict[str, float]: The validated mapping, unchanged.
@@ -353,30 +345,30 @@ class DecisionTreeResult(BaseModel):
         """
         total = sum(value.values())
         if not math.isclose(total, 1.0, abs_tol=1e-6):
-            raise ValueError(f"feature_importance scores must sum to 1.0, got {total:.8f}")
+            raise ValueError(f"feature_importances scores must sum to 1.0, got {total:.8f}")
         return value
 
     @model_validator(mode="after")
     def _validate_feature_importance_keys_in_features_used(self) -> DecisionTreeResult:
-        """Validate that feature_importance keys exactly match features_used.
+        """Validate that feature_importances keys exactly match features.
 
         Returns:
             DecisionTreeResult: The validated model instance.
 
         Raises:
-            ValueError: If any key in `feature_importance` is missing from
-                `features_used`, or any feature in `features_used` is missing
-                from `feature_importance`.
+            ValueError: If any key in `feature_importances` is missing from
+                `features`, or any feature in `features` is missing
+                from `feature_importances`.
         """
-        importance_keys = set(self.feature_importance)
-        features_used_set = set(self.features_used)
-        extra_in_importance = importance_keys - features_used_set
-        missing_from_importance = features_used_set - importance_keys
+        importance_keys = set(self.feature_importances)
+        features_set = set(self.features)
+        extra_in_importance = importance_keys - features_set
+        missing_from_importance = features_set - importance_keys
         errors: list[str] = []
         if extra_in_importance:
-            errors.append(f"feature_importance contains keys not in features_used: {sorted(extra_in_importance)}")
+            errors.append(f"feature_importances contains keys not in features: {sorted(extra_in_importance)}")
         if missing_from_importance:
-            errors.append(f"features_used contains keys not in feature_importance: {sorted(missing_from_importance)}")
+            errors.append(f"features contains keys not in feature_importances: {sorted(missing_from_importance)}")
         if errors:
             raise ValueError("; ".join(errors))
         return self
@@ -397,17 +389,17 @@ class DecisionTreeResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rule_types_match_task_type(self) -> DecisionTreeResult:
-        """Validate that every rule's task_type matches the result's task_type.
+        """Validate that every rule's task matches the result's task.
 
         Returns:
             DecisionTreeResult: The validated model instance.
 
         Raises:
-            ValueError: If any rule has a `task_type` that does not match
-                `self.task_type`.
+            ValueError: If any rule has a `task` that does not match
+                `self.task`.
         """
-        if any(rule.task_type != self.task_type for rule in self.rules):
-            raise ValueError(f"rules have task_type inconsistent with result task_type '{self.task_type}'")
+        if any(rule.task != self.task for rule in self.rules):
+            raise ValueError(f"rules have task inconsistent with result task '{self.task}'")
         return self
 
 

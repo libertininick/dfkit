@@ -414,7 +414,7 @@ class TestDecisionTreeRule:
 
         # Act
         rule = ClassificationRule(
-            task_type="classification",
+            task="classification",
             predicates=predicates,
             prediction="retained",
             samples=342,
@@ -423,7 +423,7 @@ class TestDecisionTreeRule:
 
         # Assert
         with check:
-            assert rule.task_type == "classification"
+            assert rule.task == "classification"
         with check:
             assert rule.predicates == predicates
         with check:
@@ -448,7 +448,7 @@ class TestDecisionTreeRule:
 
         # Act
         rule = RegressionRule(
-            task_type="regression",
+            task="regression",
             predicates=predicates,
             prediction=112_500.0,
             samples=87,
@@ -457,7 +457,7 @@ class TestDecisionTreeRule:
 
         # Assert
         with check:
-            assert rule.task_type == "regression"
+            assert rule.task == "regression"
         with check:
             assert rule.predicates == predicates
         with check:
@@ -473,7 +473,7 @@ class TestDecisionTreeRule:
             (
                 ClassificationRule,
                 {
-                    "task_type": "classification",
+                    "task": "classification",
                     "predicates": [
                         Predicate(variable="credit_score", operator=">", value=700.0),
                         Predicate(variable="loan_amount", operator="<=", value=50000.0),
@@ -487,7 +487,7 @@ class TestDecisionTreeRule:
             (
                 RegressionRule,
                 {
-                    "task_type": "regression",
+                    "task": "regression",
                     "predicates": [
                         Predicate(variable="years_experience", operator=">", value=8.0),
                         Predicate(variable="management_level", operator="==", value="True"),
@@ -530,7 +530,7 @@ class TestDecisionTreeRule:
         """A classification rule with no predicates should be accepted as a valid single-leaf tree."""
         # Act
         rule = ClassificationRule(
-            task_type="classification",
+            task="classification",
             predicates=[],
             prediction="no_churn",
             samples=1000,
@@ -582,7 +582,7 @@ class TestDecisionTreeRule:
         """
         # Act
         rule = ClassificationRule(
-            task_type="classification",
+            task="classification",
             predicates=predicates,
             prediction=prediction,
             samples=samples,
@@ -597,7 +597,7 @@ class TestDecisionTreeRule:
         """A regression rule with std=0.0 should be accepted as a valid edge case."""
         # Act
         rule = RegressionRule(
-            task_type="regression",
+            task="regression",
             predicates=[Predicate(variable="contract_type", operator="==", value="fixed_rate")],
             prediction=50_000.0,
             samples=12,
@@ -616,7 +616,7 @@ class TestDecisionTreeRule:
         # Arrange / Act / Assert
         with pytest.raises(ValidationError, match="confidence"):
             ClassificationRule(  # type: ignore[call-arg]
-                task_type="classification",
+                task="classification",
                 predicates=[Predicate(variable="product_category", operator="==", value="electronics")],
                 prediction="medium_value",
                 samples=78,
@@ -630,7 +630,7 @@ class TestDecisionTreeRule:
         # Arrange / Act / Assert
         with pytest.raises(ValidationError, match="std"):
             RegressionRule(  # type: ignore[call-arg]
-                task_type="regression",
+                task="regression",
                 predicates=[Predicate(variable="years_experience", operator=">", value=5.0)],
                 prediction=95_000.0,
                 samples=120,
@@ -641,7 +641,7 @@ class TestDecisionTreeRule:
         # Arrange / Act / Assert
         with pytest.raises(ValidationError, match="samples"):
             ClassificationRule(
-                task_type="classification",
+                task="classification",
                 predicates=[Predicate(variable="purchase_count", operator=">", value=5.0)],
                 prediction="loyal",
                 samples=-1,
@@ -656,7 +656,7 @@ class TestDecisionTreeRule:
         # Arrange / Act / Assert
         with pytest.raises(ValidationError, match="samples"):
             ClassificationRule(
-                task_type="classification",
+                task="classification",
                 predicates=[Predicate(variable="tenure_months", operator=">", value=6.0)],
                 prediction="retained",
                 samples=0,
@@ -676,7 +676,7 @@ class TestDecisionTreeRule:
         # Arrange / Act / Assert
         with pytest.raises(ValidationError):
             ClassificationRule(
-                task_type="classification",
+                task="classification",
                 predicates=[Predicate(variable="days_since_login", operator="<=", value=7.0)],
                 prediction="active",
                 samples=203,
@@ -696,7 +696,7 @@ class TestDecisionTreeRule:
         # Arrange / Act / Assert
         with pytest.raises(ValidationError):
             RegressionRule(
-                task_type="regression",
+                task="regression",
                 predicates=[Predicate(variable="years_experience", operator=">", value=5.0)],
                 prediction=95_000.0,
                 samples=120,
@@ -717,14 +717,14 @@ class TestDecisionTreeResult:
         # Arrange
         rules: list[ClassificationRule] = [
             ClassificationRule(
-                task_type="classification",
+                task="classification",
                 predicates=[Predicate(variable="tenure_months", operator="<=", value=6.0)],
                 prediction="churned",
                 samples=210,
                 confidence=0.87,
             ),
             ClassificationRule(
-                task_type="classification",
+                task="classification",
                 predicates=[
                     Predicate(variable="tenure_months", operator=">", value=6.0),
                     Predicate(variable="support_tickets", operator="<=", value=1.0),
@@ -738,11 +738,10 @@ class TestDecisionTreeResult:
         # Act
         tree_result = DecisionTreeResult(
             target="churn",
-            task_type="classification",
-            features_used=["tenure_months", "support_tickets", "monthly_charges"],
-            features_excluded=["customer_id (unique identifier)", "phone_number (free-text)"],
+            task="classification",
+            features=["tenure_months", "support_tickets", "monthly_charges"],
             rules=rules,
-            feature_importance={
+            feature_importances={
                 "tenure_months": 0.61,
                 "support_tickets": 0.27,
                 "monthly_charges": 0.12,
@@ -757,18 +756,13 @@ class TestDecisionTreeResult:
         with check:
             assert tree_result.target == "churn"
         with check:
-            assert tree_result.task_type == "classification"
+            assert tree_result.task == "classification"
         with check:
-            assert tree_result.features_used == ["tenure_months", "support_tickets", "monthly_charges"]
-        with check:
-            assert tree_result.features_excluded == [
-                "customer_id (unique identifier)",
-                "phone_number (free-text)",
-            ]
+            assert tree_result.features == ["tenure_months", "support_tickets", "monthly_charges"]
         with check:
             assert tree_result.rules == rules
         with check:
-            assert tree_result.feature_importance["tenure_months"] == 0.61
+            assert tree_result.feature_importances["tenure_months"] == 0.61
         with check:
             assert tree_result.metrics == {"accuracy": 0.89}
         with check:
@@ -788,14 +782,14 @@ class TestDecisionTreeResult:
         # Arrange
         rules: list[RegressionRule] = [
             RegressionRule(
-                task_type="regression",
+                task="regression",
                 predicates=[Predicate(variable="years_experience", operator="<=", value=2.0)],
                 prediction=54_200.0,
                 samples=143,
                 std=6_810.5,
             ),
             RegressionRule(
-                task_type="regression",
+                task="regression",
                 predicates=[
                     Predicate(variable="years_experience", operator=">", value=2.0),
                     Predicate(variable="years_experience", operator="<=", value=8.0),
@@ -805,7 +799,7 @@ class TestDecisionTreeResult:
                 std=11_340.0,
             ),
             RegressionRule(
-                task_type="regression",
+                task="regression",
                 predicates=[
                     Predicate(variable="years_experience", operator=">", value=8.0),
                     Predicate(variable="management_level", operator="==", value="True"),
@@ -819,11 +813,10 @@ class TestDecisionTreeResult:
         # Act
         tree_result = DecisionTreeResult(
             target="annual_salary",
-            task_type="regression",
-            features_used=["years_experience", "management_level", "department_code"],
-            features_excluded=["employee_id (unique identifier)"],
+            task="regression",
+            features=["years_experience", "management_level", "department_code"],
             rules=rules,
-            feature_importance={
+            feature_importances={
                 "years_experience": 0.72,
                 "management_level": 0.19,
                 "department_code": 0.09,
@@ -838,15 +831,13 @@ class TestDecisionTreeResult:
         with check:
             assert tree_result.target == "annual_salary"
         with check:
-            assert tree_result.task_type == "regression"
+            assert tree_result.task == "regression"
         with check:
-            assert tree_result.features_used == ["years_experience", "management_level", "department_code"]
-        with check:
-            assert tree_result.features_excluded == ["employee_id (unique identifier)"]
+            assert tree_result.features == ["years_experience", "management_level", "department_code"]
         with check:
             assert tree_result.rules == rules
         with check:
-            assert tree_result.feature_importance["years_experience"] == 0.72
+            assert tree_result.feature_importances["years_experience"] == 0.72
         with check:
             assert tree_result.metrics["r_squared"] == 0.76
         with check:
@@ -868,12 +859,11 @@ class TestDecisionTreeResult:
         # Arrange
         original = DecisionTreeResult(
             target="price_tier",
-            task_type="classification",
-            features_used=["sqft", "bedrooms", "neighbourhood_score"],
-            features_excluded=["listing_url (free-text)"],
+            task="classification",
+            features=["sqft", "bedrooms", "neighbourhood_score"],
             rules=[
                 ClassificationRule(
-                    task_type="classification",
+                    task="classification",
                     predicates=[
                         Predicate(variable="sqft", operator="<=", value=800.0),
                         Predicate(variable="neighbourhood_score", operator="<=", value=5.0),
@@ -883,7 +873,7 @@ class TestDecisionTreeResult:
                     confidence=0.78,
                 ),
                 ClassificationRule(
-                    task_type="classification",
+                    task="classification",
                     predicates=[
                         Predicate(variable="sqft", operator=">", value=800.0),
                         Predicate(variable="bedrooms", operator=">=", value=3.0),
@@ -893,7 +883,7 @@ class TestDecisionTreeResult:
                     confidence=0.88,
                 ),
             ],
-            feature_importance={"sqft": 0.55, "bedrooms": 0.30, "neighbourhood_score": 0.15},
+            feature_importances={"sqft": 0.55, "bedrooms": 0.30, "neighbourhood_score": 0.15},
             metrics={"accuracy": 0.83},
             sample_count=722,
             depth=2,
@@ -916,19 +906,18 @@ class TestDecisionTreeResult:
         # Arrange
         original = DecisionTreeResult(
             target="house_price",
-            task_type="regression",
-            features_used=["sqft", "bedrooms", "garage_spaces"],
-            features_excluded=["listing_id (unique identifier)"],
+            task="regression",
+            features=["sqft", "bedrooms", "garage_spaces"],
             rules=[
                 RegressionRule(
-                    task_type="regression",
+                    task="regression",
                     predicates=[Predicate(variable="sqft", operator="<=", value=1200.0)],
                     prediction=285_000.0,
                     samples=230,
                     std=42_500.0,
                 ),
                 RegressionRule(
-                    task_type="regression",
+                    task="regression",
                     predicates=[
                         Predicate(variable="sqft", operator=">", value=1200.0),
                         Predicate(variable="bedrooms", operator=">=", value=3.0),
@@ -938,7 +927,7 @@ class TestDecisionTreeResult:
                     std=78_300.0,
                 ),
             ],
-            feature_importance={"sqft": 0.60, "bedrooms": 0.25, "garage_spaces": 0.15},
+            feature_importances={"sqft": 0.60, "bedrooms": 0.25, "garage_spaces": 0.15},
             metrics={"r_squared": 0.81, "rmse": 55_200.0},
             sample_count=410,
             depth=2,
@@ -961,11 +950,10 @@ class TestDecisionTreeResult:
         with pytest.raises(ValidationError, match="rules"):
             DecisionTreeResult(
                 target="subscription_tier",
-                task_type="classification",
-                features_used=["monthly_spend"],
-                features_excluded=[],
+                task="classification",
+                features=["monthly_spend"],
                 rules=[],
-                feature_importance={"monthly_spend": 1.0},
+                feature_importances={"monthly_spend": 1.0},
                 metrics={"accuracy": 0.0},
                 sample_count=1,
                 depth=0,
@@ -982,26 +970,25 @@ class TestDecisionTreeResult:
         with pytest.raises(ValidationError, match="rules"):
             DecisionTreeResult(
                 target="price_tier",
-                task_type="classification",
-                features_used=["sqft", "bedrooms"],
-                features_excluded=[],
+                task="classification",
+                features=["sqft", "bedrooms"],
                 rules=[
                     ClassificationRule(
-                        task_type="classification",
+                        task="classification",
                         predicates=[Predicate(variable="sqft", operator="<=", value=800.0)],
                         prediction="budget",
                         samples=200,
                         confidence=0.80,
                     ),
                     ClassificationRule(
-                        task_type="classification",
+                        task="classification",
                         predicates=[Predicate(variable="sqft", operator=">", value=800.0)],
                         prediction="premium",
                         samples=300,
                         confidence=0.85,
                     ),
                 ],
-                feature_importance={"sqft": 0.70, "bedrooms": 0.30},
+                feature_importances={"sqft": 0.70, "bedrooms": 0.30},
                 metrics={"accuracy": 0.82},
                 sample_count=500,
                 depth=1,
@@ -1013,19 +1000,18 @@ class TestDecisionTreeResult:
         # Act
         tree_result = DecisionTreeResult(
             target="churn_risk",
-            task_type="classification",
-            features_used=["account_balance"],
-            features_excluded=[],
+            task="classification",
+            features=["account_balance"],
             rules=[
                 ClassificationRule(
-                    task_type="classification",
+                    task="classification",
                     predicates=[],
                     prediction="low_risk",
                     samples=500,
                     confidence=0.72,
                 ),
             ],
-            feature_importance={"account_balance": 1.0},
+            feature_importances={"account_balance": 1.0},
             metrics={"accuracy": 0.72},
             sample_count=500,
             depth=0,
@@ -1038,27 +1024,26 @@ class TestDecisionTreeResult:
         with check:
             assert tree_result.target == "churn_risk"
         with check:
-            assert tree_result.task_type == "classification"
+            assert tree_result.task == "classification"
 
-    def test_result_rejects_invalid_task_type(self) -> None:
-        """A result with an invalid task_type should raise a ValidationError."""
+    def test_result_rejects_invalid_task(self) -> None:
+        """A result with an invalid task should raise a ValidationError."""
         # Arrange / Act / Assert
-        with pytest.raises(ValidationError, match="task_type"):
+        with pytest.raises(ValidationError, match="task"):
             DecisionTreeResult(
                 target="segment",
-                task_type="clustering",  # type: ignore[arg-type]
-                features_used=["age", "income"],
-                features_excluded=[],
+                task="clustering",  # type: ignore[arg-type]
+                features=["age", "income"],
                 rules=[
                     ClassificationRule(
-                        task_type="classification",
+                        task="classification",
                         predicates=[Predicate(variable="age", operator=">", value=30.0)],
                         prediction="group_a",
                         samples=100,
                         confidence=0.75,
                     ),
                 ],
-                feature_importance={"age": 0.5, "income": 0.5},
+                feature_importances={"age": 0.5, "income": 0.5},
                 metrics={},
                 sample_count=100,
                 depth=0,
@@ -1071,19 +1056,18 @@ class TestDecisionTreeResult:
         with pytest.raises(ValidationError, match="depth"):
             DecisionTreeResult(
                 target="fraud_flag",
-                task_type="classification",
-                features_used=["transaction_amount"],
-                features_excluded=[],
+                task="classification",
+                features=["transaction_amount"],
                 rules=[
                     ClassificationRule(
-                        task_type="classification",
+                        task="classification",
                         predicates=[],
                         prediction="no_fraud",
                         samples=200,
                         confidence=0.9,
                     ),
                 ],
-                feature_importance={"transaction_amount": 1.0},
+                feature_importances={"transaction_amount": 1.0},
                 metrics={"accuracy": 0.9},
                 sample_count=200,
                 depth=-1,
@@ -1096,19 +1080,18 @@ class TestDecisionTreeResult:
         with pytest.raises(ValidationError, match="sample_count"):
             DecisionTreeResult(
                 target="conversion",
-                task_type="classification",
-                features_used=["page_views"],
-                features_excluded=[],
+                task="classification",
+                features=["page_views"],
                 rules=[
                     ClassificationRule(
-                        task_type="classification",
+                        task="classification",
                         predicates=[],
                         prediction="converted",
                         samples=1,
                         confidence=1.0,
                     ),
                 ],
-                feature_importance={"page_views": 1.0},
+                feature_importances={"page_views": 1.0},
                 metrics={"accuracy": 0.0},
                 sample_count=0,
                 depth=0,
@@ -1121,88 +1104,85 @@ class TestDecisionTreeResult:
         with pytest.raises(ValidationError, match="leaf_count"):
             DecisionTreeResult(
                 target="revenue_band",
-                task_type="regression",
-                features_used=["order_value"],
-                features_excluded=[],
+                task="regression",
+                features=["order_value"],
                 rules=[],
-                feature_importance={"order_value": 1.0},
+                feature_importances={"order_value": 1.0},
                 metrics={"r_squared": 0.5},
                 sample_count=100,
                 depth=0,
                 leaf_count=0,
             )
 
-    def test_result_rejects_rules_with_task_type_inconsistent_with_result_task_type(self) -> None:
-        """A result with rule task_types inconsistent with the result task_type should raise a ValidationError.
+    def test_result_rejects_rules_with_task_inconsistent_with_result_task(self) -> None:
+        """A result with rule tasks inconsistent with the result task should raise a ValidationError.
 
         Verifies that embedding a `ClassificationRule` inside a regression
         `DecisionTreeResult` is rejected, enforcing the invariant that every
-        rule must share the same task_type as the enclosing result.
+        rule must share the same task as the enclosing result.
 
         The insurance claim domain is chosen to vary the realistic data from
         other tests in this class.
         """
         # Arrange / Act / Assert
-        with pytest.raises(ValidationError, match="task_type"):
+        with pytest.raises(ValidationError, match="task"):
             DecisionTreeResult(
                 target="claim_amount",
-                task_type="regression",
-                features_used=["policy_age_years", "prior_claims_count"],
-                features_excluded=[],
+                task="regression",
+                features=["policy_age_years", "prior_claims_count"],
                 rules=[  # type: ignore[arg-type]
                     RegressionRule(
-                        task_type="regression",
+                        task="regression",
                         predicates=[Predicate(variable="prior_claims_count", operator="<=", value=1.0)],
                         prediction=4200.0,
                         samples=310,
                         std=850.0,
                     ),
-                    ClassificationRule(  # wrong task_type: should be a RegressionRule
-                        task_type="classification",
+                    ClassificationRule(  # wrong task: should be a RegressionRule
+                        task="classification",
                         predicates=[Predicate(variable="prior_claims_count", operator=">", value=1.0)],
                         prediction="high_risk",
                         samples=140,
                         confidence=0.78,
                     ),
                 ],
-                feature_importance={"policy_age_years": 0.55, "prior_claims_count": 0.45},
+                feature_importances={"policy_age_years": 0.55, "prior_claims_count": 0.45},
                 metrics={"r_squared": 0.71, "rmse": 1200.0},
                 sample_count=450,
                 depth=1,
                 leaf_count=2,
             )
 
-    def test_result_rejects_feature_importance_not_summing_to_one(self) -> None:
-        """A result with feature_importance scores that do not sum to 1.0 should raise a ValidationError.
+    def test_result_rejects_feature_importances_not_summing_to_one(self) -> None:
+        """A result with feature_importances scores that do not sum to 1.0 should raise a ValidationError.
 
         Verifies the validator that enforces importance scores sum to 1.0 within
         a tolerance of 1e-6, catching data errors where importances are unnormalized.
         """
         # Arrange / Act / Assert
-        with pytest.raises(ValidationError, match=r"feature_importance scores must sum to 1\.0"):
+        with pytest.raises(ValidationError, match=r"feature_importances scores must sum to 1\.0"):
             DecisionTreeResult(
                 target="churn",
-                task_type="classification",
-                features_used=["tenure_months", "support_tickets"],
-                features_excluded=[],
+                task="classification",
+                features=["tenure_months", "support_tickets"],
                 rules=[
                     ClassificationRule(
-                        task_type="classification",
+                        task="classification",
                         predicates=[],
                         prediction="retained",
                         samples=300,
                         confidence=0.80,
                     ),
                 ],
-                feature_importance={"tenure_months": 0.60, "support_tickets": 0.60},
+                feature_importances={"tenure_months": 0.60, "support_tickets": 0.60},
                 metrics={"accuracy": 0.80},
                 sample_count=300,
                 depth=0,
                 leaf_count=1,
             )
 
-    def test_result_accepts_feature_importance_within_floating_point_tolerance(self) -> None:
-        """Feature importance scores summing to 1.0 within 1e-6 tolerance should be accepted.
+    def test_result_accepts_feature_importances_within_floating_point_tolerance(self) -> None:
+        """Feature importances scores summing to 1.0 within 1e-6 tolerance should be accepted.
 
         Verifies that minor floating-point rounding errors in importance scores
         (as produced by sklearn) do not cause spurious validation failures.
@@ -1210,19 +1190,18 @@ class TestDecisionTreeResult:
         # Arrange / Act / Assert — values sum to 1.0000000005, within tolerance
         tree_result = DecisionTreeResult(
             target="churn",
-            task_type="classification",
-            features_used=["tenure_months", "support_tickets", "monthly_charges"],
-            features_excluded=[],
+            task="classification",
+            features=["tenure_months", "support_tickets", "monthly_charges"],
             rules=[
                 ClassificationRule(
-                    task_type="classification",
+                    task="classification",
                     predicates=[],
                     prediction="retained",
                     samples=500,
                     confidence=0.82,
                 ),
             ],
-            feature_importance={
+            feature_importances={
                 "tenure_months": 0.500_000_000_3,
                 "support_tickets": 0.300_000_000_1,
                 "monthly_charges": 0.199_999_999_6,
@@ -1235,4 +1214,4 @@ class TestDecisionTreeResult:
 
         # Assert
         with check:
-            assert tree_result.feature_importance["tenure_months"] == pytest.approx(0.5, abs=1e-6)
+            assert tree_result.feature_importances["tenure_months"] == pytest.approx(0.5, abs=1e-6)
