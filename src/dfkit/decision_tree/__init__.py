@@ -2,26 +2,10 @@
 
 from __future__ import annotations
 
-from dfkit.decision_tree.models import (
-    ClassificationRule,
-    ColumnType,
-    DecisionTree,
-    DecisionTreeResult,
-    DecisionTreeRule,
-    DecisionTreeTask,
-    Predicate,
-    PredicateOp,
-    RegressionRule,
-)
+from dfkit.decision_tree.fitting import build_decision_tree_result
+from dfkit.decision_tree.models import DecisionTreeResult
 
 __all__ = [
-    "ClassificationRule",
-    "ColumnType",
-    "DecisionTree",
     "DecisionTreeResult",
-    "DecisionTreeRule",
-    "DecisionTreeTask",
-    "Predicate",
-    "PredicateOp",
-    "RegressionRule",
+    "build_decision_tree_result",
 ]
