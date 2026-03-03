@@ -38,10 +38,8 @@ AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of data
 
 
 # ---------------------------------------------------------------------------
-# Public interface -- Pipeline orchestration
+# Public interface
 # ---------------------------------------------------------------------------
-
-
 def analyze_with_decision_tree(
     df: pl.DataFrame,
     features: list[str] | None,
@@ -106,11 +104,6 @@ def analyze_with_decision_tree(
     )
 
 
-# ---------------------------------------------------------------------------
-# Public interface -- Tree fitting
-# ---------------------------------------------------------------------------
-
-
 def fit_tree(
     task: DecisionTreeTask,
     feature_matrix: np.ndarray,
@@ -148,11 +141,6 @@ def fit_tree(
     )
     tree.fit(feature_matrix, target_array)
     return tree
-
-
-# ---------------------------------------------------------------------------
-# Public interface -- Rule extraction
-# ---------------------------------------------------------------------------
 
 
 def extract_rules(
@@ -205,11 +193,6 @@ def extract_rules(
         rules=rules,
     )
     return rules
-
-
-# ---------------------------------------------------------------------------
-# Public interface -- Metrics and feature importance
-# ---------------------------------------------------------------------------
 
 
 def compute_metrics(
