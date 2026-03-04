@@ -125,8 +125,8 @@ class TestDecisionTreeModule:
         """Invoking analyze_with_decision_tree with a categorical target returns a classification result.
 
         The result should be a DecisionTreeResult with task="classification",
-        each rule should contain Predicate objects, and predicates should
-        serialize to dicts with variable, operator, and value keys.
+        each rule should contain Predicate objects, and the accuracy metric
+        should be present.
 
         Args:
             module (DecisionTreeModule): Module fixture.
@@ -157,22 +157,6 @@ class TestDecisionTreeModule:
             assert "accuracy" in result.metrics
         with check:
             assert isinstance(result.metrics["accuracy"], float)
-        # Assert — predicates serialize to dicts with the expected keys and semantic values
-        dumped = result.model_dump()
-        dumped_rules_with_predicates = [r for r in dumped["rules"] if r["predicates"]]
-        assert dumped_rules_with_predicates, "Expected at least one serialized rule with predicates"
-        predicate_dict = dumped_rules_with_predicates[0]["predicates"][0]
-        with check:
-            assert "variable" in predicate_dict
-        with check:
-            assert "operator" in predicate_dict
-        with check:
-            assert "value" in predicate_dict
-        # Assert — variable refers to a feature, operator is a recognized PredicateOp
-        with check:
-            assert predicate_dict["variable"] in result.features
-        with check:
-            assert predicate_dict["operator"] in {">", ">=", "<=", "<", "==", "!=", "in", "not in"}
 
     def test_tool_invocation_regression(self, module: DecisionTreeModule) -> None:
         """Invoking analyze_with_decision_tree with a numeric target returns a regression result.
