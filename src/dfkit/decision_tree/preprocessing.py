@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import numpy as np
 import polars as pl
@@ -36,7 +37,8 @@ DTYPE_TO_COLUMN_TYPE: dict[type[pl.DataType] | pl.DataType, ColumnType] = {
 }
 
 HIGH_CARDINALITY_RATIO: float = 0.9
-THRESHOLD_DECIMAL_PLACES: int = 4  # Decimal places for rounding numeric split thresholds in predicates.
+# Decimal places for rounding numeric split thresholds in predicates.
+THRESHOLD_DECIMAL_PLACES: int = 4
 
 INTEGER_DTYPES: frozenset[type[pl.DataType]] = frozenset({
     pl.Int8,
@@ -177,7 +179,7 @@ def infer_task(
     if task_override in {"classification", "regression"}:
         return task_override  # type: ignore[return-value]
 
-    column_type = DTYPE_TO_COLUMN_TYPE.get(series.dtype)
+    column_type = classify_column(series.dtype)
     if column_type in {"boolean", "categorical"}:
         return "classification"
 
@@ -303,11 +305,11 @@ def _get_exclusion_reason(series: pl.Series, row_count: int) -> str | None:
     return None
 
 
-def _make_category_mapping(labels: Any) -> dict[int, str]:
+def _make_category_mapping(labels: Iterable[object]) -> dict[int, str]:
     """Build a `{code: label}` mapping from an ordered sequence of category labels.
 
     Args:
-        labels (Any): An iterable of category labels (e.g. numpy array or list)
+        labels (Iterable[object]): An iterable of category labels (e.g. numpy array or list)
             ordered by their ordinal code, starting at 0.
 
     Returns:
