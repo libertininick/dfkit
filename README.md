@@ -67,6 +67,32 @@ print(response["messages"][-1].content)
 The agent uses the toolkit to translate your natural language questions into
 SQL queries against the registered DataFrames and returns the results.
 
+### 4. Add decision tree analysis
+
+Extend the toolkit with the `DecisionTreeModule` to give your agent the ability
+to fit interpretable decision trees on registered DataFrames.
+
+```python
+from dfkit.decision_tree import DecisionTreeModule
+
+# Pass DecisionTreeModule to get_tools / get_system_prompt
+agent = create_agent(
+    model=model,
+    tools=toolkit.get_tools(DecisionTreeModule),
+    system_prompt=toolkit.get_system_prompt(DecisionTreeModule),
+)
+
+# The agent can now build decision trees to answer analytical questions
+response = agent.invoke({
+    "messages": [HumanMessage("What factors drive high revenue?")]
+})
+print(response["messages"][-1].content)
+```
+
+The agent will automatically choose between SQL queries and decision tree
+analysis based on the question. Decision trees are useful for identifying
+key drivers, segmenting data, and understanding feature importance.
+
 ## Development Setup
 
 Using `uv` for Python environment management:
