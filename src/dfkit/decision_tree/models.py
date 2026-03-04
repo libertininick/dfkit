@@ -131,7 +131,7 @@ class ClassificationRule(BaseModel):
     """A decision rule extracted from a classification tree leaf node.
 
     Represents the path from the root of the tree to one leaf, expressed as
-    a list of `Predicate` predicates, together with the predicted class
+    an ordered list of predicates, together with the predicted class
     label and the confidence at that leaf.
 
     Attributes:
