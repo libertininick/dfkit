@@ -74,9 +74,11 @@ def analyze_with_decision_tree(
         DecisionTreeResult: The fitted tree result.
 
     Raises:
-        ValueError: On any validation failure (missing columns, degenerate
-            target, no valid features, or insufficient samples).
+        ValueError: On any validation failure (invalid task override, missing
+            columns, degenerate target, no valid features, or insufficient
+            samples).
     """
+    _validate_task_override(task)
     _validate_inputs(df, target, features)
 
     feature_columns = features if features is not None else [col for col in df.columns if col != target]
@@ -551,6 +553,26 @@ def _simplify_predicate_group(variable: str, op: str, group: list[Predicate]) ->
         intersection = sets[0].intersection(*sets[1:])
         return [Predicate(variable=variable, operator="in", value=intersection)]
     return list(group)
+
+
+def _validate_task_override(task: str | None) -> None:
+    """Raise ``ValueError`` if *task* is not a recognized task override value.
+
+    Args:
+        task (str | None): The task override to validate. ``None`` and ``"auto"``
+            trigger automatic detection and are therefore accepted. Only
+            ``"classification"`` and ``"regression"`` are accepted as explicit
+            overrides.
+
+    Raises:
+        ValueError: If *task* is a non-``None`` string that is not
+            ``"classification"``, ``"regression"``, or ``"auto"``.
+    """
+    valid_values = {"classification", "regression", "auto", None}
+    if task not in valid_values:
+        raise ValueError(
+            f"Invalid task override '{task}'. Valid values are 'classification', 'regression', 'auto', or None."
+        )
 
 
 def _validate_inputs(

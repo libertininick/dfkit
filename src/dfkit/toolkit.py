@@ -273,7 +273,7 @@ class DataFrameToolkit:
         module_prompts = self._build_module_prompts(module_classes, exclude)
         prompt_parts.extend(module_prompts)
 
-        return "".join(prompt_parts)
+        return "\n".join(prompt_parts)
 
     # -------------------------------------------------------------------------
     # Public Methods
