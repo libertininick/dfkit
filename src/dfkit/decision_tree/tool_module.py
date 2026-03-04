@@ -91,7 +91,7 @@ class DecisionTreeModule:
             )
             df = self._context.get_dataframe(dataframe)
             if isinstance(df, ToolCallError):
-                logger.warning(f"analyze_with_decision_tree tool error: {df.error_type} for dataframe={dataframe}")
+                logger.warning("analyze_with_decision_tree tool error: {} for dataframe={}", df.error_type, dataframe)
                 return df
 
             try:
@@ -108,15 +108,21 @@ class DecisionTreeModule:
                 # other exceptions are unanticipated and will be propagated
                 error = ToolCallError(error_type="InvalidArgument", message=str(exc))
                 logger.warning(
-                    f"analyze_with_decision_tree tool error: {error.error_type}"
-                    f" for dataframe={dataframe}, target={target}"
+                    "analyze_with_decision_tree tool error: {} for dataframe={}, target={}",
+                    error.error_type,
+                    dataframe,
+                    target,
                 )
                 return error
 
             logger.info(
-                f"Decision tree fitted: dataframe={dataframe}, target={result.target},"
-                f" task={result.task}, depth={result.depth},"
-                f" leaf_count={result.leaf_count}, sample_count={result.sample_count}"
+                "Decision tree fitted: dataframe={}, target={}, task={}, depth={}, leaf_count={}, sample_count={}",
+                dataframe,
+                result.target,
+                result.task,
+                result.depth,
+                result.leaf_count,
+                result.sample_count,
             )
             return result
 
