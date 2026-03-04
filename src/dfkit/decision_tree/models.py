@@ -356,6 +356,8 @@ class DecisionTreeResult(BaseModel):
         Raises:
             ValueError: If the scores do not sum to 1.0 within a tolerance of 1e-6.
         """
+        if not value:
+            return value
         total = sum(value.values())
         if not math.isclose(total, 1.0, abs_tol=1e-6):
             raise ValueError(f"feature_importances scores must sum to 1.0, got {total:.8f}")

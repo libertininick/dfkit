@@ -247,7 +247,8 @@ def compute_feature_importance(
     Returns:
         dict[str, float]: Mapping of feature name to rounded importance score,
             sorted in descending order of importance. Keys are exactly those
-            features with importance > 0.
+            features with importance > 0. Returns an empty dict for single-leaf
+            trees where all feature importances are zero.
     """
     importances = tree.feature_importances_
     paired = [(name, round(float(importance), 4)) for name, importance in zip(feature_names, importances, strict=True)]
