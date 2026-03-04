@@ -47,86 +47,7 @@ class DecisionTreeModule:
                 registered DataFrames.
         """
         self._context = context
-
-        @tool
-        def analyze_with_decision_tree(
-            *,
-            dataframe: str,
-            target: str,
-            features: list[str] | None = None,
-            max_depth: int = MAX_TREE_DEPTH,
-            min_samples_leaf: int = AUTO_MIN_SAMPLES_FLOOR,
-            task: str | None = None,
-        ) -> DecisionTreeResult | ToolCallError:
-            """Analyze a DataFrame with a decision tree to discover column relationships.
-
-            Args:
-                dataframe (str): Name or ID of a registered DataFrame.
-                target (str): Name of the target column to predict.
-                features (list[str] | None): List of feature column names. If None,
-                    all suitable columns are used automatically.
-                max_depth (int): Maximum tree depth (1-6). Default 6.
-                min_samples_leaf (int): Minimum samples per leaf node. Default 5.
-                task (str | None): Task type override: "classification", "regression",
-                    or None for auto-detect.
-
-            Returns:
-                DecisionTreeResult | ToolCallError: DecisionTreeResult with rules,
-                    feature importance, and metrics, or ToolCallError if the input
-                    is invalid.
-
-            Examples:
-                >>> tool = module.get_tools()[0]
-                >>> result = tool.invoke({
-                ...     "dataframe": "sales",
-                ...     "target": "churn",
-                ...     "features": ["tenure", "monthly_charges"],
-                ... })
-            """
-            logger.log(
-                TOOL_CALL_LEVEL,
-                "Tool call: analyze_with_decision_tree",
-                dataframe=dataframe,
-                target=target,
-            )
-            df = self._context.get_dataframe(dataframe)
-            if isinstance(df, ToolCallError):
-                logger.warning("analyze_with_decision_tree tool error: {} for dataframe={}", df.error_type, dataframe)
-                return df
-
-            try:
-                result = _analyze_with_decision_tree(
-                    df,
-                    features,
-                    target,
-                    task=task,
-                    max_depth=max_depth,
-                    min_samples_leaf=min_samples_leaf,
-                )
-            except ValueError as exc:
-                # ValueErrors represent anticipated exceptions the LLM can adapt to
-                # other exceptions are unanticipated and will be propagated
-                error = ToolCallError(error_type="InvalidArgument", message=str(exc))
-                logger.warning(
-                    "analyze_with_decision_tree tool error: {} for dataframe={}, target={}",
-                    error.error_type,
-                    dataframe,
-                    target,
-                )
-                return error
-
-            logger.info(
-                "Decision tree fitted: dataframe={}, target={}, task={}, depth={}, leaf_count={}, sample_count={}",
-                dataframe,
-                result.target,
-                result.task,
-                result.depth,
-                result.leaf_count,
-                result.sample_count,
-            )
-            return result
-
-        self._tools: list[BaseTool] = [analyze_with_decision_tree]
+        self._tools = (tool(self.analyze_with_decision_tree),)
 
     @property
     def system_prompt(self) -> str:
@@ -174,3 +95,73 @@ class DecisionTreeModule:
             list[BaseTool]: List containing the analyze_with_decision_tree tool.
         """
         return list(self._tools)
+
+    def analyze_with_decision_tree(
+        self,
+        *,
+        dataframe: str,
+        target: str,
+        features: list[str] | None = None,
+        max_depth: int = MAX_TREE_DEPTH,
+        min_samples_leaf: int = AUTO_MIN_SAMPLES_FLOOR,
+        task: str | None = None,
+    ) -> DecisionTreeResult | ToolCallError:
+        """Analyze a DataFrame with a decision tree to discover column relationships.
+
+        Args:
+            dataframe (str): Name or ID of a registered DataFrame.
+            target (str): Name of the target column to predict.
+            features (list[str] | None): List of feature column names. If None,
+                all suitable columns are used automatically.
+            max_depth (int): Maximum tree depth (1-6). Default 6.
+            min_samples_leaf (int): Minimum samples per leaf node. Default 5.
+            task (str | None): Task type override: "classification", "regression",
+                or None for auto-detect.
+
+        Returns:
+            DecisionTreeResult | ToolCallError: DecisionTreeResult with rules,
+                feature importance, and metrics, or ToolCallError if the input
+                is invalid.
+        """
+        logger.log(
+            TOOL_CALL_LEVEL,
+            "Tool call: analyze_with_decision_tree for dataframe={}, target={}",
+            dataframe,
+            target,
+        )
+        df = self._context.get_dataframe(dataframe)
+        if isinstance(df, ToolCallError):
+            logger.warning("analyze_with_decision_tree tool error: {} for dataframe={}", df.error_type, dataframe)
+            return df
+
+        try:
+            result = _analyze_with_decision_tree(
+                df,
+                features,
+                target,
+                task=task,
+                max_depth=max_depth,
+                min_samples_leaf=min_samples_leaf,
+            )
+        except ValueError as exc:
+            # ValueErrors represent anticipated exceptions the LLM can adapt to
+            # other exceptions are unanticipated and will be propagated
+            error = ToolCallError(error_type="InvalidArgument", message=str(exc))
+            logger.warning(
+                "analyze_with_decision_tree tool error: {} for dataframe={}, target={}",
+                error.error_type,
+                dataframe,
+                target,
+            )
+            return error
+
+        logger.info(
+            "Decision tree fitted: dataframe={}, target={}, task={}, depth={}, leaf_count={}, sample_count={}",
+            dataframe,
+            result.target,
+            result.task,
+            result.depth,
+            result.leaf_count,
+            result.sample_count,
+        )
+        return result
