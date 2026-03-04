@@ -93,6 +93,10 @@ The agent will automatically choose between SQL queries and decision tree
 analysis based on the question. Decision trees are useful for identifying
 key drivers, segmenting data, and understanding feature importance.
 
+## Examples
+
+See the [`examples/`](examples/) directory for complete, runnable demos including Jupyter notebooks and sample datasets.
+
 ## Development Setup
 
 Using `uv` for Python environment management:
