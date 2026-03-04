@@ -61,6 +61,7 @@ class TestDecisionTreeModule:
         Returns:
             DecisionTreeModule: Module instance for testing.
         """
+        # Access private attribute to inject context into module (intentional in tests)
         return DecisionTreeModule(toolkit_with_data._tool_module_context)
 
     def test_satisfies_tool_module_protocol(self, module: DecisionTreeModule) -> None:
@@ -378,6 +379,7 @@ class TestDecisionTreeModule:
         })
         toolkit = DataFrameToolkit()
         toolkit.register_dataframe(df_name, df)
+        # Access private attribute to inject context into module (intentional in tests)
         module = DecisionTreeModule(toolkit._tool_module_context)
         decision_tree_tool = module.get_tools()[0]
 

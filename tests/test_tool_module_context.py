@@ -44,7 +44,7 @@ def context_with_data() -> ContextFixture:
     sales_df = pl.DataFrame({"id": [1, 2, 3], "amount": [100, 200, 300]})
     ref = toolkit.register_dataframe("sales", sales_df)
 
-    # Use the toolkit's own context instance (created during __init__)
+    # Access private attribute to test the context object directly (intentional in tests)
     context = toolkit._tool_module_context
 
     return ContextFixture(context=context, toolkit=toolkit, ref=ref)
@@ -61,6 +61,7 @@ class TestReferencesProperty:
         """
         # Arrange
         toolkit = DataFrameToolkit()
+        # Access private attribute to test the context object directly (intentional in tests)
         context = toolkit._tool_module_context
 
         # Act
