@@ -83,9 +83,9 @@ def analyze_with_decision_tree(
             samples).
     """
     _validate_task_override(task)
-    _validate_inputs(df, target, features)
-
+    _validate_target_column_exists(df, target)
     feature_columns = features if features is not None else [col for col in df.columns if col != target]
+    _validate_feature_columns_exist(df, feature_columns)
 
     # Drop null-target rows before feature filtering so the cardinality ratio
     # uses the same denominator as the data the tree will be fitted on.
@@ -584,24 +584,6 @@ def _validate_task_override(task: str | None) -> None:
         raise ValueError(
             f"Invalid task override '{task}'. Valid values are 'classification', 'regression', 'auto', or None."
         )
-
-
-def _validate_inputs(
-    df: pl.DataFrame,
-    target: str,
-    features: list[str] | None,
-) -> None:
-    """Validate that the target and requested feature columns exist in the DataFrame.
-
-    Args:
-        df (pl.DataFrame): The source DataFrame to check.
-        target (str): The target column name.
-        features (list[str] | None): Requested feature column names, or `None`
-            to use all non-target columns.
-    """
-    _validate_target_column_exists(df, target)
-    feature_columns = features if features is not None else [col for col in df.columns if col != target]
-    _validate_feature_columns_exist(df, feature_columns)
 
 
 def _prepare_clean_dataframe(
