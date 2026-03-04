@@ -323,6 +323,33 @@ class TestDecisionTreeModule:
         with check:
             assert "unsupported" in result.message
 
+    def test_tool_invocation_task_auto_synonym_returns_result(self, module: DecisionTreeModule) -> None:
+        """Invoking analyze_with_decision_tree with task="auto" produces a DecisionTreeResult.
+
+        "auto" is a recognized synonym for None in _validate_task_override and
+        is treated as automatic task detection. Passing task="auto" must
+        therefore succeed and return a DecisionTreeResult, not a ToolCallError.
+
+        Args:
+            module (DecisionTreeModule): Module fixture.
+        """
+        # Arrange
+        decision_tree_tool = module.get_tools()[0]
+
+        # Act
+        tool_input: dict[str, Any] = {
+            "dataframe": "customers",
+            "target": "churned",
+            "task": "auto",
+        }
+        result = decision_tree_tool.invoke(tool_input)
+
+        # Assert
+        with check:
+            assert isinstance(result, DecisionTreeResult)
+        with check:
+            assert result.task == "classification"
+
     @pytest.mark.parametrize(
         ("df_name", "target_col", "column_data"),
         [
@@ -413,6 +440,36 @@ class TestDecisionTreeModule:
             assert result.error_type == "InvalidArgument"
         with check:
             assert "nonexistent_feature" in result.message
+
+    def test_tool_returns_error_for_empty_features_list(self, module: DecisionTreeModule) -> None:
+        """Invoking analyze_with_decision_tree with features=[] returns ToolCallError.
+
+        When an empty feature list is passed, no valid feature columns remain
+        after filtering, so fitting.py raises a ValueError which the tool
+        converts to a ToolCallError. The error message must indicate that no
+        valid feature columns remain.
+
+        Args:
+            module (DecisionTreeModule): Module fixture.
+        """
+        # Arrange
+        decision_tree_tool = module.get_tools()[0]
+
+        # Act
+        tool_input: dict[str, Any] = {
+            "dataframe": "customers",
+            "target": "churned",
+            "features": [],
+        }
+        result = decision_tree_tool.invoke(tool_input)
+
+        # Assert
+        with check:
+            assert isinstance(result, ToolCallError)
+        with check:
+            assert result.error_type == "InvalidArgument"
+        with check:
+            assert "No valid feature columns" in result.message
 
     def test_tool_invocation_task_override_classification(self, module: DecisionTreeModule) -> None:
         """Passing task="classification" with a numeric target overrides auto-detection.
@@ -509,6 +566,8 @@ class TestDecisionTreeModule:
             assert isinstance(result, ToolCallError)
         with check:
             assert result.error_type == "InvalidArgument"
+        with check:
+            assert "float" in result.message
 
     def test_tool_invocation_min_samples_leaf_constrains_leaf_count(
         self,
