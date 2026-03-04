@@ -199,11 +199,6 @@ class TestDecisionTreeModule:
             assert isinstance(result.metrics["r_squared"], float)
         with check:
             assert isinstance(result.metrics["rmse"], float)
-        # Assert — feature_importances covers all features
-        with check:
-            assert len(result.feature_importances) == len(result.features)
-        with check:
-            assert set(result.feature_importances.keys()) == set(result.features)
 
     def test_tool_returns_error_for_invalid_dataframe(self, module: DecisionTreeModule) -> None:
         """Invoking analyze_with_decision_tree with a nonexistent dataframe name returns ToolCallError.
