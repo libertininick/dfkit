@@ -551,6 +551,9 @@ def _simplify_predicate_group(variable: str, op: str, group: list[Predicate]) ->
     if op == "in":
         sets = [cast(set[float] | set[str], p.value) for p in group]
         intersection = sets[0].intersection(*sets[1:])
+        if not intersection:
+            # keep unsimplified if intersection is empty
+            return list(group)
         return [Predicate(variable=variable, operator="in", value=intersection)]
     return list(group)
 

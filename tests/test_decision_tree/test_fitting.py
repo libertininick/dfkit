@@ -1863,6 +1863,52 @@ class TestSimplifyPredicates:
         assert len(result) == 1
         assert result[0].value == {"green", "blue"}
 
+    def test_in_predicates_disjoint_sets_returns_original_group(self) -> None:
+        """Two `in` predicates with disjoint sets should return both predicates unsimplified.
+
+        When two categorical `in` predicates on the same variable have no common
+        values, their intersection is empty. Returning a single predicate with
+        ``value=set()`` would silently make all rows fail the predicate, so the
+        function must instead return the original group unchanged.
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="color", operator="in", value={"a", "b"}),
+            Predicate(variable="color", operator="in", value={"c", "d"}),
+        ]
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert — both original predicates are returned, not a single empty-set predicate
+        assert len(result) == 2
+        result_values = [p.value for p in result]
+        with check:
+            assert {"a", "b"} in result_values
+        with check:
+            assert {"c", "d"} in result_values
+
+    def test_in_predicates_overlapping_sets_returns_intersection(self) -> None:
+        """Two `in` predicates with overlapping sets should be replaced by their intersection.
+
+        When two categorical `in` predicates share at least one value, the
+        function must return a single predicate whose value is the intersection
+        of the two sets, confirming that the disjoint-set guard does not
+        inadvertently break the normal overlapping-set path.
+        """
+        # Arrange
+        predicates = [
+            Predicate(variable="tier", operator="in", value={"gold", "silver"}),
+            Predicate(variable="tier", operator="in", value={"silver", "bronze"}),
+        ]
+
+        # Act
+        result = _simplify_predicates(predicates)
+
+        # Assert — single predicate with intersection value
+        assert len(result) == 1
+        assert result[0].value == {"silver"}
+
     def test_single_predicate_per_variable_unchanged(self) -> None:
         """Predicates on distinct variables with no duplicates should pass through unchanged.
 
