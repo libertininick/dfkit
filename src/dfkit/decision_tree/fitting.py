@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from collections import defaultdict
+from collections.abc import Sequence
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 import polars as pl
@@ -40,6 +42,8 @@ AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of data
 # ---------------------------------------------------------------------------
 # Public interface
 # ---------------------------------------------------------------------------
+
+
 def analyze_with_decision_tree(
     df: pl.DataFrame,
     features: list[str] | None,
@@ -186,19 +190,18 @@ def extract_rules(
         list[ClassificationRule] | list[RegressionRule]: One rule per leaf node.
     """
     leaf_assignments = tree.apply(feature_matrix) if task == "regression" else None
-    rules: list[ClassificationRule] | list[RegressionRule] = []
-    _walk_tree(
+    rules = _walk_tree(
         tree=tree,
         target_array=target_array,
         feature_encoders=feature_encoders,
         target_mapping=target_mapping,
         task=task,
         leaf_assignments=leaf_assignments,
-        node_id=0,
-        path_predicates=[],
-        rules=rules,
     )
-    rules = [rule.model_copy(update={"predicates": _simplify_predicates(rule.predicates)}) for rule in rules]
+    rules = cast(
+        list[ClassificationRule] | list[RegressionRule],
+        [rule.model_copy(update={"predicates": _simplify_predicates(rule.predicates)}) for rule in rules],
+    )
     return rules
 
 
@@ -268,6 +271,19 @@ def compute_feature_importance(
 # ---------------------------------------------------------------------------
 
 
+class PendingNode(NamedTuple):
+    """A node queued for processing during iterative tree traversal.
+
+    Attributes:
+        node_id (int): Index of the node in the sklearn internal tree structure.
+        path_predicates (tuple[Predicate, ...]): Predicates accumulated from
+            the root to this node.
+    """
+
+    node_id: int
+    path_predicates: tuple[Predicate, ...]
+
+
 def _walk_tree(
     *,
     tree: DecisionTree,
@@ -276,11 +292,8 @@ def _walk_tree(
     target_mapping: dict[int, str] | None,
     task: DecisionTreeTask,
     leaf_assignments: np.ndarray | None,
-    node_id: int,
-    path_predicates: list[Predicate],
-    rules: list[ClassificationRule] | list[RegressionRule],
-) -> None:
-    """Recursively walk a decision tree node and accumulate leaf rules.
+) -> list[ClassificationRule] | list[RegressionRule]:
+    """Walk a fitted decision tree iteratively and return one rule per leaf.
 
     Args:
         tree (DecisionTree): A fitted sklearn tree.
@@ -290,46 +303,42 @@ def _walk_tree(
         task (DecisionTreeTask): Whether the tree is a classifier or regressor.
         leaf_assignments (np.ndarray | None): Per-sample leaf node IDs from
             `tree.apply(feature_matrix)`, used to compute per-leaf std for regression.
-        node_id (int): The current node index in `tree.tree_`.
-        path_predicates (list[Predicate]): Accumulated predicates from the root
-            to `node_id`.
-        rules (list[ClassificationRule] | list[RegressionRule]): Accumulator
-            list; leaf rules are appended in-place.
+
+    Returns:
+        list[ClassificationRule] | list[RegressionRule]: One rule per leaf node.
     """
     sklearn_tree = tree.tree_
-    left_child = sklearn_tree.children_left[node_id]
-    right_child = sklearn_tree.children_right[node_id]
-    is_leaf = left_child == right_child  # Both are TREE_LEAF (-1) at leaves
+    rules: list[ClassificationRule] | list[RegressionRule] = []
+    pending: list[PendingNode] = [PendingNode(node_id=0, path_predicates=())]
 
-    if is_leaf:
-        rule = _build_leaf_rule(
-            sklearn_tree=sklearn_tree,
-            node_id=node_id,
-            path_predicates=path_predicates,
-            task=task,
-            target_mapping=target_mapping,
-            target_array=target_array,
-            leaf_assignments=leaf_assignments,
-        )
-        rules.append(rule)  # type: ignore[arg-type]
-        return
+    while pending:
+        node = pending.pop()
+        left_child = sklearn_tree.children_left[node.node_id]
+        right_child = sklearn_tree.children_right[node.node_id]
 
-    feature_index = sklearn_tree.feature[node_id]
-    threshold = sklearn_tree.threshold[node_id]
-    encoder = feature_encoders[feature_index]
-    left_predicate, right_predicate = _build_split_predicates(encoder, threshold)
+        # Check for a leaf node
+        if left_child == right_child:
+            rule = _build_leaf_rule(
+                sklearn_tree=sklearn_tree,
+                node_id=node.node_id,
+                path_predicates=node.path_predicates,
+                task=task,
+                target_mapping=target_mapping,
+                target_array=target_array,
+                leaf_assignments=leaf_assignments,
+            )
+            rules.append(rule)
+            continue
 
-    shared_kwargs: dict[str, Any] = {
-        "tree": tree,
-        "target_array": target_array,
-        "feature_encoders": feature_encoders,
-        "target_mapping": target_mapping,
-        "task": task,
-        "leaf_assignments": leaf_assignments,
-        "rules": rules,
-    }
-    _walk_tree(**shared_kwargs, node_id=left_child, path_predicates=[*path_predicates, left_predicate])
-    _walk_tree(**shared_kwargs, node_id=right_child, path_predicates=[*path_predicates, right_predicate])
+        encoder = feature_encoders[sklearn_tree.feature[node.node_id]]
+        threshold = sklearn_tree.threshold[node.node_id]
+        left_predicate, right_predicate = _build_split_predicates(encoder, threshold)
+
+        # Right first so left is visited first (LIFO)
+        pending.append(PendingNode(right_child, (*node.path_predicates, right_predicate)))
+        pending.append(PendingNode(left_child, (*node.path_predicates, left_predicate)))
+
+    return rules
 
 
 def _build_split_predicates(encoder: FeatureEncoder, threshold: float) -> tuple[Predicate, Predicate]:
@@ -371,7 +380,7 @@ def _build_leaf_rule(
     *,
     sklearn_tree: Any,
     node_id: int,
-    path_predicates: list[Predicate],
+    path_predicates: Sequence[Predicate],
     task: DecisionTreeTask,
     target_mapping: dict[int, str] | None,
     target_array: np.ndarray,
@@ -383,7 +392,7 @@ def _build_leaf_rule(
         sklearn_tree (Any): The `tree.tree_` internal structure from a fitted
             sklearn decision tree estimator.
         node_id (int): Index of the leaf node in `sklearn_tree`.
-        path_predicates (list[Predicate]): Predicates accumulated along the
+        path_predicates (Sequence[Predicate]): Predicates accumulated along the
             path from root to this leaf.
         task (DecisionTreeTask): Whether to produce a classification or
             regression rule.
@@ -418,7 +427,7 @@ def _build_classification_rule(
     node_value: np.ndarray,
     n_samples: int,
     *,
-    path_predicates: list[Predicate],
+    path_predicates: Sequence[Predicate],
     target_mapping: dict[int, str] | None,
 ) -> ClassificationRule:
     """Construct a classification rule from a leaf node's class counts.
@@ -427,7 +436,7 @@ def _build_classification_rule(
         node_value (np.ndarray): The `tree.tree_.value[node_id]` array with
             shape `(1, n_classes)` containing per-class sample counts.
         n_samples (int): Total number of training samples at this leaf.
-        path_predicates (list[Predicate]): Predicates along the root-to-leaf path.
+        path_predicates (Sequence[Predicate]): Predicates along the root-to-leaf path.
         target_mapping (dict[int, str] | None): Maps integer class codes to
             original label strings.
 
@@ -447,7 +456,7 @@ def _build_classification_rule(
 
     return ClassificationRule(
         task="classification",
-        predicates=path_predicates,
+        predicates=list(path_predicates),
         prediction=prediction,
         samples=n_samples,
         confidence=round(confidence, 4),
@@ -459,7 +468,7 @@ def _build_regression_rule(
     n_samples: int,
     node_id: int,
     *,
-    path_predicates: list[Predicate],
+    path_predicates: Sequence[Predicate],
     target_array: np.ndarray,
     leaf_assignments: np.ndarray | None,
 ) -> RegressionRule:
@@ -473,7 +482,7 @@ def _build_regression_rule(
             shape `(1, 1)` containing the leaf mean.
         n_samples (int): Total number of training samples at this leaf.
         node_id (int): Index of the leaf node in the internal tree structure.
-        path_predicates (list[Predicate]): Predicates along the root-to-leaf path.
+        path_predicates (Sequence[Predicate]): Predicates along the root-to-leaf path.
         target_array (np.ndarray): 1-D target vector used to fit the tree.
         leaf_assignments (np.ndarray | None): Per-sample leaf node IDs from
             `tree.apply(feature_matrix)`.
@@ -492,7 +501,7 @@ def _build_regression_rule(
 
     return RegressionRule(
         task="regression",
-        predicates=path_predicates,
+        predicates=list(path_predicates),
         prediction=round(prediction, 4),
         samples=n_samples,
         std=round(leaf_std, 4),
@@ -521,11 +530,9 @@ def _simplify_predicates(predicates: list[Predicate]) -> list[Predicate]:
     Returns:
         list[Predicate]: Simplified predicates in first-appearance order.
     """
-    groups: dict[tuple[str, str], list[Predicate]] = {}
+    groups: dict[tuple[str, str], list[Predicate]] = defaultdict(list)
     for predicate in predicates:
         key = (predicate.variable, predicate.operator)
-        if key not in groups:
-            groups[key] = []
         groups[key].append(predicate)
 
     result: list[Predicate] = []
@@ -560,17 +567,17 @@ def _simplify_predicate_group(variable: str, op: str, group: list[Predicate]) ->
 
 
 def _validate_task_override(task: str | None) -> None:
-    """Raise ``ValueError`` if *task* is not a recognized task override value.
+    """Raise `ValueError` if *task* is not a recognized task override value.
 
     Args:
-        task (str | None): The task override to validate. ``None`` and ``"auto"``
+        task (str | None): The task override to validate. `None` and `"auto"`
             trigger automatic detection and are therefore accepted. Only
-            ``"classification"`` and ``"regression"`` are accepted as explicit
+            `"classification"` and `"regression"` are accepted as explicit
             overrides.
 
     Raises:
-        ValueError: If *task* is a non-``None`` string that is not
-            ``"classification"``, ``"regression"``, or ``"auto"``.
+        ValueError: If *task* is a non-`None` string that is not
+            `"classification"`, `"regression"`, or `"auto"`.
     """
     valid_values = {"classification", "regression", "auto", None}
     if task not in valid_values:
