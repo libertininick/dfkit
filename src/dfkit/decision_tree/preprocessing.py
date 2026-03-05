@@ -36,6 +36,7 @@ DTYPE_TO_COLUMN_TYPE: dict[type[pl.DataType] | pl.DataType, ColumnType] = {
     pl.Duration: "duration",
 }
 
+# Columns where unique values exceed 90% of rows are almost certainly IDs or free text, not useful categoricals.
 HIGH_CARDINALITY_RATIO: float = 0.9
 # Decimal places for rounding numeric split thresholds in predicates.
 THRESHOLD_DECIMAL_PLACES: int = 4
