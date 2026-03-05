@@ -1863,13 +1863,13 @@ class TestSimplifyPredicates:
         assert len(result) == 1
         assert result[0].value == {"green", "blue"}
 
-    def test_in_predicates_disjoint_sets_returns_original_group(self) -> None:
-        """Two `in` predicates with disjoint sets should return both predicates unsimplified.
+    def test_in_predicates_disjoint_sets_raises(self) -> None:
+        """Two `in` predicates with disjoint sets should raise ``ValueError``.
 
-        When two categorical `in` predicates on the same variable have no common
-        values, their intersection is empty. Returning a single predicate with
-        ``value=set()`` would silently make all rows fail the predicate, so the
-        function must instead return the original group unchanged.
+        When two categorical ``in`` predicates on the same variable have no
+        common values their intersection is empty, meaning the rule path is
+        contradictory and can never match any sample. The function must raise
+        ``ValueError`` rather than silently returning a nonsensical result.
         """
         # Arrange
         predicates = [
@@ -1877,16 +1877,9 @@ class TestSimplifyPredicates:
             Predicate(variable="color", operator="in", value={"c", "d"}),
         ]
 
-        # Act
-        result = _simplify_predicates(predicates)
-
-        # Assert — both original predicates are returned, not a single empty-set predicate
-        assert len(result) == 2
-        result_values = [p.value for p in result]
-        with check:
-            assert {"a", "b"} in result_values
-        with check:
-            assert {"c", "d"} in result_values
+        # Act / Assert
+        with pytest.raises(ValueError, match="Intersection of 'in' predicates for 'color' is empty"):
+            _simplify_predicates(predicates)
 
     def test_in_predicates_overlapping_sets_returns_intersection(self) -> None:
         """Two `in` predicates with overlapping sets should be replaced by their intersection.

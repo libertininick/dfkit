@@ -551,6 +551,10 @@ def _simplify_predicate_group(variable: str, op: str, group: list[Predicate]) ->
 
     Returns:
         list[Predicate]: Simplified predicates for this group.
+
+    Raises:
+        ValueError: If the intersection of ``"in"`` predicates for *variable*
+            is empty, indicating a contradictory rule path.
     """
     if op == "<=":
         return [min(group, key=lambda p: cast(float, p.value))]
@@ -560,8 +564,10 @@ def _simplify_predicate_group(variable: str, op: str, group: list[Predicate]) ->
         sets = [cast(set[float] | set[str], p.value) for p in group]
         intersection = sets[0].intersection(*sets[1:])
         if not intersection:
-            # keep unsimplified if intersection is empty
-            return list(group)
+            raise ValueError(
+                f"Intersection of 'in' predicates for '{variable}' is empty: "
+                "the rule path is contradictory and can never match any sample."
+            )
         return [Predicate(variable=variable, operator="in", value=intersection)]
     return list(group)
 
