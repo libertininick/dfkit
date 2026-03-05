@@ -18,6 +18,7 @@ from dfkit.decision_tree.models import (
     DecisionTreeRule,
     DecisionTreeTask,
     Predicate,
+    PredicateOp,
     RegressionRule,
 )
 from dfkit.decision_tree.preprocessing import (
@@ -189,18 +190,13 @@ def extract_rules(
     Returns:
         list[ClassificationRule] | list[RegressionRule]: One rule per leaf node.
     """
-    leaf_assignments = tree.apply(feature_matrix) if task == "regression" else None
     rules = _walk_tree(
         tree=tree,
         target_array=target_array,
         feature_encoders=feature_encoders,
         target_mapping=target_mapping,
         task=task,
-        leaf_assignments=leaf_assignments,
-    )
-    rules = cast(
-        list[ClassificationRule] | list[RegressionRule],
-        [rule.model_copy(update={"predicates": _simplify_predicates(rule.predicates)}) for rule in rules],
+        leaf_assignments=tree.apply(feature_matrix),
     )
     return rules
 
@@ -254,6 +250,9 @@ def compute_feature_importance(
             trees where all feature importances are zero.
     """
     importances = tree.feature_importances_
+    # Round each raw importance early so that the displayed values already reflect
+    # the precision we will surface to callers. Features rounded to exactly 0.0 are
+    # dropped, which means very small raw importances (<0.00005) are excluded.
     paired = [(name, round(float(importance), 4)) for name, importance in zip(feature_names, importances, strict=True)]
     filtered = [(name, importance) for name, importance in paired if importance > 0.0]
     filtered.sort(key=lambda item: item[1], reverse=True)
@@ -262,6 +261,9 @@ def compute_feature_importance(
     if renormalized:
         others_sum = sum(importance for _, importance in renormalized[:-1])
         last_name = renormalized[-1][0]
+        # Force the last element to exactly 1.0 - (sum of all others) so that
+        # accumulated rounding error does not prevent the displayed values from
+        # summing to 1.0.
         renormalized[-1] = (last_name, round(1.0 - others_sum, 4))
     return dict(renormalized)
 
@@ -321,7 +323,7 @@ def _walk_tree(
             rule = _build_leaf_rule(
                 sklearn_tree=sklearn_tree,
                 node_id=node.node_id,
-                path_predicates=node.path_predicates,
+                path_predicates=tuple(_simplify_predicates(node.path_predicates)),
                 task=task,
                 target_mapping=target_mapping,
                 target_array=target_array,
@@ -497,6 +499,8 @@ def _build_regression_rule(
         leaf_mask = leaf_assignments == node_id
         leaf_target = target_array[leaf_mask]
         if len(leaf_target) > 0:
+            # ddof=0 (population std) intentionally matches sklearn's own impurity
+            # calculation, which also uses the population formula internally.
             leaf_std = float(np.std(leaf_target))
 
     return RegressionRule(
@@ -508,7 +512,7 @@ def _build_regression_rule(
     )
 
 
-def _simplify_predicates(predicates: list[Predicate]) -> list[Predicate]:
+def _simplify_predicates(predicates: Sequence[Predicate]) -> list[Predicate]:
     """Reduce a list of predicates to the tightest equivalent constraints.
 
     Groups predicates by `(variable, operator)` and applies operator-specific
@@ -524,13 +528,12 @@ def _simplify_predicates(predicates: list[Predicate]) -> list[Predicate]:
     input list, then preserves operator order within that variable.
 
     Args:
-        predicates (list[Predicate]): Predicates to simplify. Neither the list
-            nor any `Predicate` object is mutated.
+        predicates (Sequence[Predicate]): Predicates to simplify.
 
     Returns:
         list[Predicate]: Simplified predicates in first-appearance order.
     """
-    groups: dict[tuple[str, str], list[Predicate]] = defaultdict(list)
+    groups: dict[tuple[str, PredicateOp], list[Predicate]] = defaultdict(list)
     for predicate in predicates:
         key = (predicate.variable, predicate.operator)
         groups[key].append(predicate)
@@ -541,12 +544,12 @@ def _simplify_predicates(predicates: list[Predicate]) -> list[Predicate]:
     return result
 
 
-def _simplify_predicate_group(variable: str, op: str, group: list[Predicate]) -> list[Predicate]:
+def _simplify_predicate_group(variable: str, op: PredicateOp, group: list[Predicate]) -> list[Predicate]:
     """Simplify one `(variable, operator)` predicate group to its tightest constraints.
 
     Args:
         variable (str): The feature variable shared by all predicates in the group.
-        op (str): The operator shared by all predicates in the group.
+        op (PredicateOp): The operator shared by all predicates in the group.
         group (list[Predicate]): One or more predicates with the same variable and operator.
 
     Returns:
