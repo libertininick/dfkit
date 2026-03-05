@@ -112,15 +112,15 @@ class DataFrameReference(BaseModel):
 
     References are classified as either **base** or **derivative**:
 
-    - **Base**: User-provided DataFrames with no lineage. ``parent_ids`` is empty
-      and ``source_query`` is None.
-    - **Derivative**: DataFrames produced by SQL queries. ``parent_ids`` is non-empty
-      and ``source_query`` is set.
+    - **Base**: User-provided DataFrames with no lineage. `parent_ids` is empty
+      and `source_query` is None.
+    - **Derivative**: DataFrames produced by SQL queries. `parent_ids` is non-empty
+      and `source_query` is set.
 
     Invariant:
-        ``parent_ids`` and ``source_query`` must be consistent: both empty/None (base)
+        `parent_ids` and `source_query` must be consistent: both empty/None (base)
         or both populated (derivative). A model validator enforces this at construction
-        time, so ``ref.is_base`` is a reliable test for base references.
+        time, so `ref.is_base` is a reliable test for base references.
 
     Attributes:
         id (DataFrameId): Unique identifier to reference the DataFrame in the registry and SQL queries.

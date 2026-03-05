@@ -51,16 +51,16 @@ def capturing_sink(*, enable_dfkit: bool = True) -> Generator[list[loguru.Record
 
     Registers a new loguru handler that appends each raw record dict to a list,
     optionally enables the dfkit logger for the duration of the block, then removes
-    the handler (and disables the dfkit logger when ``enable_dfkit=True``) on exit.
+    the handler (and disables the dfkit logger when `enable_dfkit=True`) on exit.
 
-    Use this in tests that need a raw sink independent of the ``log_sink`` fixture.
-    Pass ``enable_dfkit=False`` when testing state *after* a ``LoggingHandle`` has
+    Use this in tests that need a raw sink independent of the `log_sink` fixture.
+    Pass `enable_dfkit=False` when testing state *after* a `LoggingHandle` has
     already been disabled — in that case the sink observes whether dfkit records
     flow without this helper re-enabling the logger.
 
     Args:
-        enable_dfkit (bool): When True (default), calls ``logger.enable(PACKAGE_NAME)``
-            before yielding and ``logger.disable(PACKAGE_NAME)`` on exit. Set to False
+        enable_dfkit (bool): When True (default), calls `logger.enable(PACKAGE_NAME)`
+            before yielding and `logger.disable(PACKAGE_NAME)` on exit. Set to False
             when the test must observe the logger state left by the code under test.
 
     Yields:
@@ -78,7 +78,7 @@ def capturing_sink(*, enable_dfkit: bool = True) -> Generator[list[loguru.Record
         """Append the raw record dict to the accumulated list.
 
         Args:
-            message (loguru.Message): Loguru message object; its ``record`` attribute holds the raw dict.
+            message (loguru.Message): Loguru message object; its `record` attribute holds the raw dict.
         """
         captured_records.append(message.record)
 
@@ -604,9 +604,9 @@ class TestListDataFramesLogging:
         """Verify the list_dataframes DEBUG result extra fields reflect the actual registry state.
 
         The TOOL_CALL entry and DEBUG result logging for list_dataframes is covered by
-        ``test_toolkit_function_logs_tool_call_entry_and_result``. This test focuses
+        `test_toolkit_function_logs_tool_call_entry_and_result`. This test focuses
         exclusively on the per-case invariant: the DEBUG result's extra dict must contain
-        the correct ``count`` and ``names`` values for both empty and non-empty registries.
+        the correct `count` and `names` values for both empty and non-empty registries.
 
         Args:
             log_sink (LogSink): Fixture providing log sink for capturing records.

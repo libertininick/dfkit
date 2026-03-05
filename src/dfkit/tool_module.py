@@ -25,12 +25,12 @@ class ToolModule(Protocol):
     - get_tools(): Method returning a list of LangChain BaseTool instances
 
     Constructor Contract (NOT enforced by protocol):
-        Modules should accept a ToolModuleContext in their ``__init__`` method::
+        Modules should accept a ToolModuleContext in their `__init__` method::
 
             def __init__(self, context: ToolModuleContext) -> None:
                 self._context = context
 
-        Note: runtime_checkable protocols cannot verify ``__init__`` signatures.
+        Note: runtime_checkable protocols cannot verify `__init__` signatures.
         This is a convention that module authors must follow.
 
     Implementation Steps:

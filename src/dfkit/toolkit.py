@@ -230,7 +230,7 @@ class DataFrameToolkit:
         Note:
             Modules with zero tools (after exclusions) have their system prompt
             silently omitted from the combined prompt. Factory-generated classes
-            with the same ``__name__`` will produce duplicate section headers in
+            with the same `__name__` will produce duplicate section headers in
             the system prompt.
 
         Args:
@@ -273,7 +273,7 @@ class DataFrameToolkit:
         module_prompts = self._build_module_prompts(module_classes, exclude)
         prompt_parts.extend(module_prompts)
 
-        return "".join(prompt_parts)
+        return "\n".join(prompt_parts)
 
     # -------------------------------------------------------------------------
     # Public Methods
@@ -701,7 +701,7 @@ class DataFrameToolkit:
         columns and control the number of rows displayed.
 
         Note:
-            This method temporarily modifies global ``pl.Config`` state to render
+            This method temporarily modifies global `pl.Config` state to render
             the table. It is not thread-safe: concurrent calls from different
             threads may observe each other's configuration.
 
