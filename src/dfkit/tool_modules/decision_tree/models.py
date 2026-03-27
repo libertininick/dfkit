@@ -265,7 +265,7 @@ class DecisionTreeResult(BaseModel):
         features (list[str]): Feature column names that were included when
             fitting the tree.
         target (str): Target column name used as the prediction label.
-        rules (list[ClassificationRule] | list[RegressionRule]): One rule per
+        rules (list[DecisionTreeRule]): One rule per
             leaf node, describing the predicates and prediction for that path
             through the tree. Each rule's `task` field identifies its
             concrete type.
@@ -312,7 +312,7 @@ class DecisionTreeResult(BaseModel):
     target: str = Field(
         description="Target column name used as the prediction label.",
     )
-    rules: list[ClassificationRule] | list[RegressionRule] = Field(
+    rules: list[DecisionTreeRule] = Field(
         description=(
             "One rule per leaf node, describing the path predicates and prediction "
             "for every reachable outcome of the tree. Each rule's task field "
@@ -422,6 +422,7 @@ class DecisionTreeResult(BaseModel):
         return self
 
     # endregion
+
 
 # endregion
 

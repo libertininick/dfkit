@@ -206,6 +206,7 @@ class MockModuleWithNoTools:
         """
         return []
 
+
 # endregion
 
 
@@ -270,6 +271,8 @@ class TestGetTools:
         # Act
         tools = toolkit.get_core_tools()
         tool_get_dataframe_id = next(t for t in tools if t.name == "get_dataframe_id")
+        assert tool_get_dataframe_id.args_schema is not None
+        assert isinstance(tool_get_dataframe_id.args_schema, type)
         tool_schema = tool_get_dataframe_id.args_schema.model_json_schema()
 
         # Assert - 'self' should not be in the properties
@@ -1427,6 +1430,8 @@ class TestViewAsMarkdownTable:
         # Act
         tools = toolkit.get_core_tools()
         tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        assert tool_view.args_schema is not None
+        assert isinstance(tool_view.args_schema, type)
         tool_schema = tool_view.args_schema.model_json_schema()
 
         # Assert - 'self' should not be in the properties
@@ -1447,6 +1452,8 @@ class TestViewAsMarkdownTable:
         # Act
         tools = toolkit.get_core_tools()
         tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        assert tool_view.args_schema is not None
+        assert isinstance(tool_view.args_schema, type)
         tool_schema = tool_view.args_schema.model_json_schema()
         columns_prop = tool_schema["properties"]["columns"]
 
@@ -1498,6 +1505,7 @@ class TestViewAsMarkdownTable:
         # Assert
         with check:
             assert "view_as_markdown_table" in tool_names
+
 
 # endregion
 
@@ -1977,5 +1985,6 @@ class TestGetCoreToolsUnaffected:
         core_tool_names = {t.name for t in core_tools_after}
         with check:
             assert "mock_tool_a" not in core_tool_names
+
 
 # endregion

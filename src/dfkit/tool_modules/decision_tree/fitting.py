@@ -156,7 +156,7 @@ def extract_rules(
     feature_encoders: list[FeatureEncoder],
     target_mapping: dict[int, str] | None,
     task: DecisionTreeTask,
-) -> list[ClassificationRule] | list[RegressionRule]:
+) -> list[DecisionTreeRule]:
     """Extract human-readable rules from a fitted decision tree.
 
     Walks the `tree.tree_` internal structure recursively, building one
@@ -186,7 +186,7 @@ def extract_rules(
         task (DecisionTreeTask): Whether the tree is a classifier or regressor.
 
     Returns:
-        list[ClassificationRule] | list[RegressionRule]: One rule per leaf node.
+        list[DecisionTreeRule]: One rule per leaf node.
     """
     rules = _walk_tree(
         tree=tree,
@@ -265,6 +265,7 @@ def compute_feature_importance(
         renormalized[-1] = (last_name, round(1.0 - others_sum, 4))
     return dict(renormalized)
 
+
 # endregion
 
 
@@ -292,7 +293,7 @@ def _walk_tree(
     target_mapping: dict[int, str] | None,
     task: DecisionTreeTask,
     leaf_assignments: np.ndarray | None,
-) -> list[ClassificationRule] | list[RegressionRule]:
+) -> list[DecisionTreeRule]:
     """Walk a fitted decision tree iteratively and return one rule per leaf.
 
     Args:
@@ -305,10 +306,10 @@ def _walk_tree(
             `tree.apply(feature_matrix)`, used to compute per-leaf std for regression.
 
     Returns:
-        list[ClassificationRule] | list[RegressionRule]: One rule per leaf node.
+        list[DecisionTreeRule]: One rule per leaf node.
     """
     sklearn_tree = tree.tree_
-    rules: list[ClassificationRule] | list[RegressionRule] = []
+    rules: list[DecisionTreeRule] = []
     pending: list[PendingNode] = [PendingNode(node_id=0, path_predicates=())]
 
     while pending:

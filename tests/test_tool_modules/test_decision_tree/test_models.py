@@ -11,6 +11,7 @@ from pytest_check import check
 from dfkit.tool_modules.decision_tree.models import (
     ClassificationRule,
     DecisionTreeResult,
+    DecisionTreeRule,
     Predicate,
     RegressionRule,
 )
@@ -502,9 +503,9 @@ class TestDecisionTreeRule:
     )
     def test_rule_serialization_roundtrip_produces_identical_object(
         self,
-        rule_class: type[ClassificationRule | RegressionRule],
+        rule_class: type[DecisionTreeRule],
         kwargs: dict[str, Any],
-        expected_model: type[ClassificationRule | RegressionRule],
+        expected_model: type[DecisionTreeRule],
     ) -> None:
         """Serializing a rule to a dict and validating it back should produce an equal model.
 
@@ -513,9 +514,9 @@ class TestDecisionTreeRule:
         for both ClassificationRule and RegressionRule.
 
         Args:
-            rule_class (type[ClassificationRule | RegressionRule]): The rule class to construct.
+            rule_class (type[DecisionTreeRule]): The rule class to construct.
             kwargs (dict[str, Any]): Constructor keyword arguments for the rule.
-            expected_model (type[ClassificationRule | RegressionRule]): The model class used for validation.
+            expected_model (type[DecisionTreeRule]): The model class used for validation.
         """
         # Arrange
         original = rule_class(**kwargs)
@@ -715,7 +716,7 @@ class TestDecisionTreeResult:
         every field is accessible with the expected value.
         """
         # Arrange
-        rules: list[ClassificationRule] = [
+        rules: list[DecisionTreeRule] = [
             ClassificationRule(
                 task="classification",
                 predicates=[Predicate(variable="tenure_months", operator="<=", value=6.0)],
@@ -780,7 +781,7 @@ class TestDecisionTreeResult:
         error and every field carries the expected value.
         """
         # Arrange
-        rules: list[RegressionRule] = [
+        rules: list[DecisionTreeRule] = [
             RegressionRule(
                 task="regression",
                 predicates=[Predicate(variable="years_experience", operator="<=", value=2.0)],
@@ -1130,7 +1131,7 @@ class TestDecisionTreeResult:
                 target="claim_amount",
                 task="regression",
                 features=["policy_age_years", "prior_claims_count"],
-                rules=[  # type: ignore[arg-type]
+                rules=[
                     RegressionRule(
                         task="regression",
                         predicates=[Predicate(variable="prior_claims_count", operator="<=", value=1.0)],
