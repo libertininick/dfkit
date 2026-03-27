@@ -457,7 +457,8 @@ class TestDecisionTreeModule:
 
         When the target is "monthly_spend" (a numeric column that would normally
         auto-detect as regression), supplying task="classification" should produce
-        a result with task == "classification".
+        a result with task == "classification". sklearn is expected to emit a
+        UserWarning about unique class count exceeding 50% of samples.
 
         Args:
             module (DecisionTreeModule): Module fixture.
@@ -465,13 +466,14 @@ class TestDecisionTreeModule:
         # Arrange
         decision_tree_tool = module.get_tools()[0]
 
-        # Act
+        # Act — sklearn warns when treating a high-cardinality numeric column as classification
         tool_input: dict[str, Any] = {
             "dataframe": "customers",
             "target": "monthly_spend",
             "task": "classification",
         }
-        result = decision_tree_tool.invoke(tool_input)
+        with pytest.warns(UserWarning, match="unique classes is greater than 50%"):
+            result = decision_tree_tool.invoke(tool_input)
 
         # Assert
         assert isinstance(result, DecisionTreeResult)
