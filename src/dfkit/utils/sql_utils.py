@@ -41,7 +41,7 @@ DESTRUCTIVE_COMMANDS: Final[frozenset[str]] = frozenset({
 
 # Mapping of sqlglot expression types to SQL command type strings for blacklist checking.
 # Set operations (Union, Intersect, Except) are considered SELECT queries.
-_EXPRESSION_TYPE_MAP: Final[dict[type[exp.Expression], str]] = {
+_EXPRESSION_TYPE_MAP: Final[dict[type[exp.Expr], str]] = {
     exp.Select: "SELECT",
     exp.Delete: "DELETE",
     exp.Insert: "INSERT",
@@ -108,7 +108,7 @@ class _ColumnErrors:
 
 def parse_sql(
     query: str, *, dialect: str | None = None, blacklist: Collection[str] | None = None
-) -> sqlglot.Expression:
+) -> exp.Expr:
     """Parses the query using SQLglot to detect syntax errors and returns the parsed expression.
 
     If the query is syntactically valid, returns normally. If the query has syntax
@@ -124,7 +124,7 @@ def parse_sql(
             Defaults to None (no blacklist checking).
 
     Returns:
-        sqlglot.Expression: The parsed SQL expression if the query is valid.
+        exp.Expr: The parsed SQL expression if the query is valid.
 
     Raises:
         SQLSyntaxError: If the query is empty, contains only whitespace, or has
@@ -194,7 +194,7 @@ def validate_sql(
     *,
     dialect: str | None = None,
     blacklist: Collection[str] | None = None,
-) -> exp.Expression:
+) -> exp.Expr:
     """Validate a SQL query through comprehensive multi-step validation.
 
     Orchestrates full SQL validation by running parsing, table validation,
@@ -218,7 +218,7 @@ def validate_sql(
             for a pre-defined set. Defaults to None (no blacklist checking).
 
     Returns:
-        exp.Expression: The parsed and validated SQL expression.
+        exp.Expr: The parsed and validated SQL expression.
 
     Raises:
         SQLSyntaxError: If the query has invalid SQL syntax or is empty.
@@ -286,14 +286,14 @@ def validate_sql(
     return expression
 
 
-def extract_table_names(expression: exp.Expression) -> list[str]:
+def extract_table_names(expression: exp.Expr) -> list[str]:
     """Extract table names from a parsed SQL expression using scope traversal.
 
     Uses sqlglot's scope analysis to correctly distinguish actual database tables
     from CTEs and subqueries.
 
     Args:
-        expression (exp.Expression): A parsed sqlglot expression.
+        expression (exp.Expr): A parsed sqlglot expression.
 
     Returns:
         list[str]: List of lowercase table names referenced in the query.
@@ -321,11 +321,11 @@ def extract_table_names(expression: exp.Expression) -> list[str]:
 # region Helpers
 
 
-def _get_sql_command_type(expression: exp.Expression) -> str | None:
+def _get_sql_command_type(expression: exp.Expr) -> str | None:
     """Map a sqlglot expression to its SQL command type string.
 
     Args:
-        expression (exp.Expression): A parsed sqlglot expression.
+        expression (exp.Expr): A parsed sqlglot expression.
 
     Returns:
         str | None: The SQL command type (e.g., "SELECT", "DELETE") or None if
@@ -334,7 +334,7 @@ def _get_sql_command_type(expression: exp.Expression) -> str | None:
     return _EXPRESSION_TYPE_MAP.get(type(expression))
 
 
-def _validate_sql_tables(expression: exp.Expression, valid_tables: Collection[str], query_str: str) -> None:
+def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], query_str: str) -> None:
     """Validate that a SQL expression only references allowed tables.
 
     Extracts all table references using scope analysis to correctly distinguish
@@ -342,7 +342,7 @@ def _validate_sql_tables(expression: exp.Expression, valid_tables: Collection[st
     is referenced and no unknown tables are used.
 
     Args:
-        expression (exp.Expression): A pre-parsed sqlglot Expression.
+        expression (exp.Expr): A pre-parsed sqlglot Expression.
         valid_tables (Collection[str]): Collection of allowed table names. Matching is
             case-insensitive.
         query_str (str): The original query string for error messages.
@@ -372,7 +372,7 @@ def _validate_sql_tables(expression: exp.Expression, valid_tables: Collection[st
 
 
 def _validate_sql_columns(
-    expression: exp.Expression,
+    expression: exp.Expr,
     table_columns: dict[str, set[str]],
     query_str: str,
 ) -> None:
@@ -389,7 +389,7 @@ def _validate_sql_columns(
     (CTEs, subqueries) or tables not in the schema are intentionally skipped.
 
     Args:
-        expression (exp.Expression): A pre-parsed sqlglot Expression.
+        expression (exp.Expr): A pre-parsed sqlglot Expression.
         table_columns (dict[str, set[str]]): Mapping of table names to their
             valid column names. Matching is case-insensitive for both table
             names and column names.
@@ -420,7 +420,7 @@ def _validate_sql_columns(
 
 
 def _collect_column_errors(
-    expression: exp.Expression,
+    expression: exp.Expr,
     normalized_schema: dict[str, set[str]],
 ) -> _ColumnErrors:
     """Collect invalid, ambiguous, and not-found column references from a SQL expression.
@@ -431,7 +431,7 @@ def _collect_column_errors(
     and not-found columns (don't exist in any table for multi-table queries).
 
     Args:
-        expression (exp.Expression): The parsed SQL expression.
+        expression (exp.Expr): The parsed SQL expression.
         normalized_schema (dict[str, set[str]]): Lowercase schema mapping table names to column sets.
 
     Returns:
@@ -460,13 +460,13 @@ def _collect_column_errors(
 
 
 def _validate_column_references(
-    expression: exp.Expression,
+    expression: exp.Expr,
     normalized_schema: dict[str, set[str]],
 ) -> Iterator[_ColumnValidationResult]:
     """Yield validation results for all column references in a SQL expression.
 
     Args:
-        expression (exp.Expression): The parsed SQL expression to validate.
+        expression (exp.Expr): The parsed SQL expression to validate.
         normalized_schema (dict[str, set[str]]): Schema with lowercase table and column names.
 
     Yields:

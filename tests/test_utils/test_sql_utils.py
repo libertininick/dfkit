@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 import sqlglot
 from pytest_check import check
+from sqlglot import exp
 
 from dfkit.utils.exceptions import (
     SQLBlacklistedCommandError,
@@ -34,7 +35,7 @@ class TestParseSQLValidQueries:
     """Tests for parse_sql with valid SQL queries.
 
     These tests verify that syntactically correct SQL queries return
-    a sqlglot.Expression when parsed.
+    a exp.Expr when parsed.
     """
 
     @pytest.mark.parametrize(
@@ -68,7 +69,7 @@ class TestParseSQLValidQueries:
         """Valid SELECT statements should return a sqlglot Expression.
 
         Verifies that various valid SELECT statement patterns are parsed
-        successfully and return a sqlglot.Expression.
+        successfully and return a exp.Expr.
 
         Args:
             query (str): A syntactically valid SELECT statement.
@@ -76,7 +77,7 @@ class TestParseSQLValidQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "parse_sql should return Expression for valid queries"
+            assert isinstance(result, exp.Expr), "parse_sql should return Expression for valid queries"
 
     @pytest.mark.parametrize(
         "query",
@@ -95,7 +96,7 @@ class TestParseSQLValidQueries:
         """Valid INSERT statements should return a sqlglot Expression.
 
         Verifies that various valid INSERT statement patterns are parsed
-        successfully and return a sqlglot.Expression.
+        successfully and return a exp.Expr.
 
         Args:
             query (str): A syntactically valid INSERT statement.
@@ -103,7 +104,7 @@ class TestParseSQLValidQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "parse_sql should return Expression for valid INSERT"
+            assert isinstance(result, exp.Expr), "parse_sql should return Expression for valid INSERT"
 
     @pytest.mark.parametrize(
         "query",
@@ -122,7 +123,7 @@ class TestParseSQLValidQueries:
         """Valid UPDATE statements should return a sqlglot Expression.
 
         Verifies that various valid UPDATE statement patterns are parsed
-        successfully and return a sqlglot.Expression.
+        successfully and return a exp.Expr.
 
         Args:
             query (str): A syntactically valid UPDATE statement.
@@ -130,7 +131,7 @@ class TestParseSQLValidQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "parse_sql should return Expression for valid UPDATE"
+            assert isinstance(result, exp.Expr), "parse_sql should return Expression for valid UPDATE"
 
     @pytest.mark.parametrize(
         "query",
@@ -149,7 +150,7 @@ class TestParseSQLValidQueries:
         """Valid DELETE statements should return a sqlglot Expression.
 
         Verifies that various valid DELETE statement patterns are parsed
-        successfully and return a sqlglot.Expression.
+        successfully and return a exp.Expr.
 
         Args:
             query (str): A syntactically valid DELETE statement.
@@ -157,14 +158,14 @@ class TestParseSQLValidQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "parse_sql should return Expression for valid DELETE"
+            assert isinstance(result, exp.Expr), "parse_sql should return Expression for valid DELETE"
 
 
 class TestParseSQLComplexQueries:
     """Tests for parse_sql with complex SQL patterns.
 
     These tests verify that advanced SQL features like JOINs, subqueries,
-    and CTEs are properly parsed and return sqlglot.Expression.
+    and CTEs are properly parsed and return exp.Expr.
     """
 
     @pytest.mark.parametrize(
@@ -206,7 +207,7 @@ class TestParseSQLComplexQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "parse_sql should return Expression for valid JOINs"
+            assert isinstance(result, exp.Expr), "parse_sql should return Expression for valid JOINs"
 
     @pytest.mark.parametrize(
         "query",
@@ -237,7 +238,7 @@ class TestParseSQLComplexQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "parse_sql should return Expression for valid subqueries"
+            assert isinstance(result, exp.Expr), "parse_sql should return Expression for valid subqueries"
 
     @pytest.mark.parametrize(
         "query",
@@ -275,7 +276,7 @@ class TestParseSQLComplexQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "parse_sql should return Expression for valid CTEs"
+            assert isinstance(result, exp.Expr), "parse_sql should return Expression for valid CTEs"
 
     @pytest.mark.parametrize(
         "query",
@@ -304,7 +305,7 @@ class TestParseSQLComplexQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "parse_sql should return Expression for valid set operations"
+            assert isinstance(result, exp.Expr), "parse_sql should return Expression for valid set operations"
 
     @pytest.mark.parametrize(
         "query",
@@ -336,7 +337,7 @@ class TestParseSQLComplexQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), (
+            assert isinstance(result, exp.Expr), (
                 "parse_sql should return Expression for valid window functions"
             )
 
@@ -659,7 +660,7 @@ class TestParseSQLEdgeCases:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "Whitespace padding should not affect valid query parsing"
+            assert isinstance(result, exp.Expr), "Whitespace padding should not affect valid query parsing"
 
     @pytest.mark.parametrize(
         "query",
@@ -688,7 +689,7 @@ class TestParseSQLEdgeCases:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "SQL comments should not affect valid query parsing"
+            assert isinstance(result, exp.Expr), "SQL comments should not affect valid query parsing"
 
     def test_parse_sql_multiline_query_returns_expression(self) -> None:
         """Valid multiline queries should return Expression.
@@ -711,7 +712,7 @@ class TestParseSQLEdgeCases:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "Multiline query formatting should not affect parsing"
+            assert isinstance(result, exp.Expr), "Multiline query formatting should not affect parsing"
 
     def test_parse_sql_case_insensitive_keywords(self) -> None:
         """SQL keywords in different cases should be accepted.
@@ -727,7 +728,7 @@ class TestParseSQLEdgeCases:
         for query in queries:
             result = parse_sql(query)
             with check:
-                assert isinstance(result, sqlglot.Expression), f"Case variation '{query}' should be valid"
+                assert isinstance(result, exp.Expr), f"Case variation '{query}' should be valid"
 
     def test_parse_sql_special_characters_in_strings(self) -> None:
         """Queries with special characters in string literals should be valid.
@@ -739,7 +740,7 @@ class TestParseSQLEdgeCases:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "Special characters in strings should not affect parsing"
+            assert isinstance(result, exp.Expr), "Special characters in strings should not affect parsing"
 
     def test_parse_sql_numeric_literals(self) -> None:
         """Queries with various numeric literal formats should be valid.
@@ -751,7 +752,7 @@ class TestParseSQLEdgeCases:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "Numeric literals should be parsed correctly"
+            assert isinstance(result, exp.Expr), "Numeric literals should be parsed correctly"
 
     def test_parse_sql_quoted_identifiers(self) -> None:
         """Queries with quoted identifiers should be valid.
@@ -763,7 +764,7 @@ class TestParseSQLEdgeCases:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "Quoted identifiers should be parsed correctly"
+            assert isinstance(result, exp.Expr), "Quoted identifiers should be parsed correctly"
 
 
 class TestGetSQLCommandType:
@@ -950,7 +951,7 @@ class TestParseSQLBlacklist:
         result = parse_sql("DELETE FROM t")
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "DELETE without blacklist should return Expression"
+            assert isinstance(result, exp.Expr), "DELETE without blacklist should return Expression"
 
     def test_parse_sql_blacklist_allows_non_matching_commands(self) -> None:
         """SELECT with DELETE blacklisted should succeed.
@@ -961,7 +962,7 @@ class TestParseSQLBlacklist:
         result = parse_sql("SELECT * FROM t", blacklist={"DELETE"})
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "SELECT should succeed when DELETE is blacklisted"
+            assert isinstance(result, exp.Expr), "SELECT should succeed when DELETE is blacklisted"
 
     def test_parse_sql_blacklist_blocks_matching_commands(self) -> None:
         """DELETE with DELETE blacklisted should raise SQLBlacklistedCommandError.
@@ -998,7 +999,7 @@ class TestParseSQLBlacklist:
         result = parse_sql("SELECT * FROM users", blacklist=DESTRUCTIVE_COMMANDS)
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "SELECT should succeed with DESTRUCTIVE_COMMANDS blacklist"
+            assert isinstance(result, exp.Expr), "SELECT should succeed with DESTRUCTIVE_COMMANDS blacklist"
 
     def test_parse_sql_blacklist_destructive_commands_blocks_delete(self) -> None:
         """DELETE with DESTRUCTIVE_COMMANDS blacklist should raise.
@@ -1084,7 +1085,7 @@ class TestParseSQLBlacklist:
         result = parse_sql("DELETE FROM t", blacklist=set())
 
         with check:
-            assert isinstance(result, sqlglot.Expression), "Empty blacklist should allow all commands"
+            assert isinstance(result, exp.Expr), "Empty blacklist should allow all commands"
 
     def test_parse_sql_blacklist_select_can_be_blocked(self) -> None:
         """SELECT with SELECT blacklisted should raise SQLBlacklistedCommandError.
