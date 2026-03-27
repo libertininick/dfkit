@@ -1074,14 +1074,14 @@ class DataFrameToolkit:
 
         return None
 
-    def _validate_query(self, query: str) -> exp.Expression | ToolCallError:
+    def _validate_query(self, query: str) -> exp.Expr | ToolCallError:
         """Validate a SQL query against registered DataFrames.
 
         Args:
             query (str): The SQL query to validate.
 
         Returns:
-            exp.Expression | ToolCallError: The parsed AST on success,
+            exp.Expr | ToolCallError: The parsed AST on success,
                 or ToolCallError on failure.
         """
         table_columns = self._build_table_columns_schema()
