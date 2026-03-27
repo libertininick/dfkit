@@ -73,7 +73,7 @@ Extend the toolkit with the `DecisionTreeModule` to give your agent the ability
 to fit interpretable decision trees on registered DataFrames.
 
 ```python
-from dfkit.decision_tree import DecisionTreeModule
+from dfkit.tool_modules import DecisionTreeModule
 
 # Pass DecisionTreeModule to get_tools / get_system_prompt
 agent = create_agent(
