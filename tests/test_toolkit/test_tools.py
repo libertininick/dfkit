@@ -10,13 +10,12 @@ import pytest
 from langchain_core.tools import BaseTool, tool
 from pytest_check import check
 
-from dfkit.models import DataFrameReference, ToolCallError
-from dfkit.tool_module_context import ToolModuleContext
+from dfkit.registry.models import DataFrameReference
+from dfkit.tool_modules.models import ToolCallError
+from dfkit.tool_modules.tool_module_context import ToolModuleContext
 from dfkit.toolkit import DataFrameToolkit
 
-# ============================================================================
-# Mock modules for testing tool module composition
-# ============================================================================
+# region Mock modules for testing tool module composition
 
 
 class MockModuleA:
@@ -208,9 +207,10 @@ class MockModuleWithNoTools:
         return []
 
 
-# ============================================================================
-# Tests
-# ============================================================================
+# endregion
+
+
+# region Tests
 
 
 class TestGetTools:
@@ -271,6 +271,8 @@ class TestGetTools:
         # Act
         tools = toolkit.get_core_tools()
         tool_get_dataframe_id = next(t for t in tools if t.name == "get_dataframe_id")
+        assert tool_get_dataframe_id.args_schema is not None
+        assert isinstance(tool_get_dataframe_id.args_schema, type)
         tool_schema = tool_get_dataframe_id.args_schema.model_json_schema()
 
         # Assert - 'self' should not be in the properties
@@ -295,7 +297,7 @@ class TestGetDataFrameId:
         # Act
         tools = toolkit.get_core_tools()
         tool_get_dataframe_id = next(t for t in tools if t.name == "get_dataframe_id")
-        result = tool_get_dataframe_id.invoke({"name": "sales"})
+        result = tool_get_dataframe_id.invoke({"name": "sales"})  # ty: ignore[missing-typed-dict-key]
 
         # Assert
         with check:
@@ -313,7 +315,7 @@ class TestGetDataFrameId:
         # Act
         tools = toolkit.get_core_tools()
         tool_get_reference = next(t for t in tools if t.name == "get_dataframe_reference")
-        result = tool_get_reference.invoke({"identifier": "sales"})
+        result = tool_get_reference.invoke({"identifier": "sales"})  # ty: ignore[missing-typed-dict-key, invalid-key]
 
         # Assert
         with check:
@@ -423,7 +425,7 @@ class TestListDataFrames:
         # Act
         tools = toolkit.get_core_tools()
         tool_list_dataframes = next(t for t in tools if t.name == "list_dataframes")
-        result = tool_list_dataframes.invoke({})
+        result = tool_list_dataframes.invoke({})  # ty: ignore[missing-typed-dict-key]
 
         # Assert
         with check:
@@ -897,10 +899,10 @@ class TestExecuteSQL:
         # Act
         tools = toolkit.get_core_tools()
         tool_execute_sql = next(t for t in tools if t.name == "execute_sql")
-        result = tool_execute_sql.invoke({
-            "query": f"SELECT * FROM {ref.id} WHERE amount > 150",  # noqa: S608 - ref.id is a validated DataFrameId, not user input
-            "result_name": "high_sales",
-            "result_description": "Sales over $150",
+        result = tool_execute_sql.invoke({  # ty: ignore[missing-typed-dict-key]
+            "query": f"SELECT * FROM {ref.id} WHERE amount > 150",  # noqa: S608 - ref.id is a validated DataFrameId, not user input  # ty: ignore[invalid-key]
+            "result_name": "high_sales",  # ty: ignore[invalid-key]
+            "result_description": "Sales over $150",  # ty: ignore[invalid-key]
         })
 
         # Assert
@@ -1378,7 +1380,7 @@ class TestViewAsMarkdownTable:
         # Act
         tools = toolkit.get_core_tools()
         tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
-        result = tool_view.invoke({"identifier": "sales"})
+        result = tool_view.invoke({"identifier": "sales"})  # ty: ignore[missing-typed-dict-key, invalid-key]
 
         # Assert
         assert isinstance(result, str)
@@ -1404,7 +1406,7 @@ class TestViewAsMarkdownTable:
         # Act
         tools = toolkit.get_core_tools()
         tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
-        result = tool_view.invoke({"identifier": "data", "columns": ["planet", "moons"], "num_rows": 2})
+        result = tool_view.invoke({"identifier": "data", "columns": ["planet", "moons"], "num_rows": 2})  # ty: ignore[missing-typed-dict-key, invalid-key]
 
         # Assert
         assert isinstance(result, str)
@@ -1428,6 +1430,8 @@ class TestViewAsMarkdownTable:
         # Act
         tools = toolkit.get_core_tools()
         tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        assert tool_view.args_schema is not None
+        assert isinstance(tool_view.args_schema, type)
         tool_schema = tool_view.args_schema.model_json_schema()
 
         # Assert - 'self' should not be in the properties
@@ -1448,6 +1452,8 @@ class TestViewAsMarkdownTable:
         # Act
         tools = toolkit.get_core_tools()
         tool_view = next(t for t in tools if t.name == "view_as_markdown_table")
+        assert tool_view.args_schema is not None
+        assert isinstance(tool_view.args_schema, type)
         tool_schema = tool_view.args_schema.model_json_schema()
         columns_prop = tool_schema["properties"]["columns"]
 
@@ -1501,9 +1507,10 @@ class TestViewAsMarkdownTable:
             assert "view_as_markdown_table" in tool_names
 
 
-# ============================================================================
-# Phase 2: Tool module composition tests
-# ============================================================================
+# endregion
+
+
+# region Tool module composition tests
 
 
 class TestGetToolsWithModules:
@@ -1928,7 +1935,7 @@ class TestModuleRegistryInteraction:
         # Act
         tools = toolkit.get_tools(MockModuleA)
         mock_tool_a = next(t for t in tools if t.name == "mock_tool_a")
-        result = mock_tool_a.invoke({"name": "sales"})
+        result = mock_tool_a.invoke({"name": "sales"})  # ty: ignore[missing-typed-dict-key]
 
         # Assert
         with check:
@@ -1944,7 +1951,7 @@ class TestModuleRegistryInteraction:
         # Act
         tools = toolkit.get_tools(MockModuleWithRegistration)
         register_tool = next(t for t in tools if t.name == "register_test_df")
-        result = register_tool.invoke({})
+        result = register_tool.invoke({})  # ty: ignore[missing-typed-dict-key]
 
         # Assert
         with check:
@@ -1978,3 +1985,6 @@ class TestGetCoreToolsUnaffected:
         core_tool_names = {t.name for t in core_tools_after}
         with check:
             assert "mock_tool_a" not in core_tool_names
+
+
+# endregion

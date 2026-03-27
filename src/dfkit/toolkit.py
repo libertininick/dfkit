@@ -24,7 +24,20 @@ from langchain_core.tools import BaseTool, tool
 from loguru import logger
 from sqlglot import exp
 
-from dfkit.exceptions import (
+from dfkit.registry.dataframe_registry import DataFrameRegistry
+from dfkit.registry.identifier import (
+    DATAFRAME_ID_PATTERN,
+    DataFrameId,
+)
+from dfkit.registry.models import (
+    DataFrameReference,
+    DataFrameToolkitState,
+)
+from dfkit.registry.persistence import REL_TOL_DEFAULT, restore_registry_from_state
+from dfkit.tool_modules.models import ToolCallError
+from dfkit.tool_modules.tool_module import ToolModule
+from dfkit.tool_modules.tool_module_context import ToolModuleContext
+from dfkit.utils.exceptions import (
     ColumnsNotFoundError,
     DuplicateColumnsError,
     SQLBlacklistedCommandError,
@@ -32,22 +45,9 @@ from dfkit.exceptions import (
     SQLSyntaxError,
     SQLTableError,
 )
-from dfkit.identifier import (
-    DATAFRAME_ID_PATTERN,
-    DataFrameId,
-)
-from dfkit.logging import TOOL_CALL_LEVEL
-from dfkit.models import (
-    DataFrameReference,
-    DataFrameToolkitState,
-    ToolCallError,
-)
-from dfkit.persistence import REL_TOL_DEFAULT, restore_registry_from_state
-from dfkit.polars_utils import ensure_dataframe, to_markdown_table
-from dfkit.registry import DataFrameRegistry
-from dfkit.sql_utils import DESTRUCTIVE_COMMANDS, extract_table_names, validate_sql
-from dfkit.tool_module import ToolModule
-from dfkit.tool_module_context import ToolModuleContext
+from dfkit.utils.logging import TOOL_CALL_LEVEL
+from dfkit.utils.polars_utils import ensure_dataframe, to_markdown_table
+from dfkit.utils.sql_utils import DESTRUCTIVE_COMMANDS, extract_table_names, validate_sql
 
 
 class DataFrameToolkit:
@@ -133,9 +133,7 @@ class DataFrameToolkit:
         )
         self._module_cache: dict[type[ToolModule], ToolModule] = {}
 
-    # -------------------------------------------------------------------------
-    # Tool Access (Main API)
-    # -------------------------------------------------------------------------
+    # region Tool Access (Main API)
 
     def get_tools(
         self,
@@ -275,9 +273,9 @@ class DataFrameToolkit:
 
         return "\n".join(prompt_parts)
 
-    # -------------------------------------------------------------------------
-    # Public Methods
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Public Methods
 
     @property
     def references(self) -> tuple[DataFrameReference, ...]:
@@ -800,9 +798,9 @@ class DataFrameToolkit:
         """
         return DataFrameToolkitState(references=list(self._registry.references.values()))
 
-    # -------------------------------------------------------------------------
-    # Public Class Methods
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Public Class Methods
 
     @classmethod
     def from_state(
@@ -863,9 +861,9 @@ class DataFrameToolkit:
         )
         return cls(registry=registry)
 
-    # -------------------------------------------------------------------------
-    # Private Helpers
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Private Methods
 
     def _get_or_create_module(self, module_class: type[ToolModule]) -> ToolModule:
         """Get a cached module instance, creating it on first access.
@@ -1076,14 +1074,14 @@ class DataFrameToolkit:
 
         return None
 
-    def _validate_query(self, query: str) -> exp.Expression | ToolCallError:
+    def _validate_query(self, query: str) -> exp.Expr | ToolCallError:
         """Validate a SQL query against registered DataFrames.
 
         Args:
             query (str): The SQL query to validate.
 
         Returns:
-            exp.Expression | ToolCallError: The parsed AST on success,
+            exp.Expr | ToolCallError: The parsed AST on success,
                 or ToolCallError on failure.
         """
         table_columns = self._build_table_columns_schema()
@@ -1143,10 +1141,10 @@ class DataFrameToolkit:
         """
         return any(ref.name == name for ref in self._registry.references.values())
 
+    # endregion
 
-# -----------------------------------------------------------------------------
-# Private Helpers
-# -----------------------------------------------------------------------------
+
+# region Helpers
 
 # Tool logging message templates
 _TOOL_CALL_MSG = "Tool call: {tool_name}"
@@ -1204,3 +1202,6 @@ def _handle_column_validation_error(
             "invalid_columns": error.missing_columns,
         },
     )
+
+
+# endregion

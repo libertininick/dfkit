@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 from pytest_check import check
 
-from dfkit.models import (
+from dfkit.registry.models import (
     DataFrameReference,
     DataFrameToolkitState,
 )
