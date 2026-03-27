@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-20T16:49:38.760485Z"
+exclude-newer = "2026-03-20T17:45:28.303053Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -323,7 +323,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "scikit-learn" },
     { name = "scipy" },
-    { name = "sqlglot", extra = ["rs"] },
+    { name = "sqlglot", extra = ["c"] },
 ]
 
 [package.dev-dependencies]
@@ -352,7 +352,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.0" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "scipy", specifier = ">=1.17.0" },
-    { name = "sqlglot", extras = ["rs"], specifier = ">=28.5.0" },
+    { name = "sqlglot", extras = ["c"], specifier = ">=28.5.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1573,9 +1573,8 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-rs = [
+c = [
     { name = "sqlglotc" },
-    { name = "sqlglotrs" },
 ]
 
 [[package]]
@@ -1592,15 +1591,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/32/fa/00e784c948276f68aea8ee7da2ff439c8e6a25ce4e8e09cafa995121f754/sqlglotc-30.0.3-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:eeb2563318168a21cb67cf9031472a7c85da5ff31275fdac955ec5893e9f2533", size = 7124861, upload-time = "2026-03-19T16:50:28.617Z" },
     { url = "https://files.pythonhosted.org/packages/ad/89/dfc94392a795f7784770b0f313d547d2913fbc02a7d71452289cf0728c9a/sqlglotc-30.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:97bde14635bc01dcc95832e3ebf2c4204f026106a44ac7f84abe58e8027555fc", size = 7411447, upload-time = "2026-03-19T16:50:31.605Z" },
     { url = "https://files.pythonhosted.org/packages/8a/21/52494d8aeb96b3718f7526ec450ae58f6f44c13ed850d05a253273e77c35/sqlglotc-30.0.3-cp314-cp314-win_amd64.whl", hash = "sha256:c2b7421bcdc12af326d518417cbf1271d9a34fd926d84145109eeb0efad672fa", size = 4507363, upload-time = "2026-03-19T16:50:33.307Z" },
-]
-
-[[package]]
-name = "sqlglotrs"
-version = "0.13.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1c/03/4c8133ff544788df8df3bb1f1a2395c8fe6a116f27ea2ae30eab4a3de54b/sqlglotrs-0.13.0.tar.gz", hash = "sha256:ad1ad158234af0f8ba5054ca51bd17a7c1e3f81b4798c7970ebf7953fe08ddcb", size = 1179, upload-time = "2026-02-23T19:10:11.495Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/51/df8564d8e78c6a0ebf81b752397f64bf94ab1c1f6ed50502bd5bf3da1c0d/sqlglotrs-0.13.0-py3-none-any.whl", hash = "sha256:6b934a244b16f26fca50974328a2ebc7689583c59f06203cebb46e2e6e8d93a7", size = 1416, upload-time = "2026-02-23T19:10:10.755Z" },
 ]
 
 [[package]]
