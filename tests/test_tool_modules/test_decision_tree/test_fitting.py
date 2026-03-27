@@ -1234,7 +1234,7 @@ class TestComputeFeatureImportance:
         # Assert — any feature with zero sklearn importance should not appear in the dict
         raw_importances = fitted_tree.feature_importances_
         for idx, name in enumerate(["sqft", "noise_random"]):
-            if raw_importances[idx] == 0.0:
+            if raw_importances[idx] == pytest.approx(0.0):
                 with check:
                     assert name not in feature_importance
 
@@ -1759,7 +1759,7 @@ class TestSimplifyPredicates:
 
         # Assert
         assert len(result) == 1
-        assert result[0].value == 24.35
+        assert result[0].value == pytest.approx(24.35)
 
     def test_multiple_gt_predicates_keeps_maximum(self) -> None:
         """Two `>` predicates on the same variable should yield the largest value.
@@ -1779,7 +1779,7 @@ class TestSimplifyPredicates:
 
         # Assert
         assert len(result) == 1
-        assert result[0].value == 24.5
+        assert result[0].value == pytest.approx(24.5)
 
     def test_mixed_operators_same_variable(self) -> None:
         """Four predicates on one variable with two operators should simplify to two.
@@ -1804,9 +1804,9 @@ class TestSimplifyPredicates:
         le_result = next(p for p in result if p.operator == "<=")
         gt_result = next(p for p in result if p.operator == ">")
         with check:
-            assert le_result.value == 31.5
+            assert le_result.value == pytest.approx(31.5)
         with check:
-            assert gt_result.value == 24.5
+            assert gt_result.value == pytest.approx(24.5)
 
     def test_full_example_from_spec(self) -> None:
         """Six predicates across two variables should simplify to three.
@@ -1833,11 +1833,11 @@ class TestSimplifyPredicates:
         age_le = next(p for p in result if p.variable == "age" and p.operator == "<=")
         age_gt = next(p for p in result if p.variable == "age" and p.operator == ">")
         with check:
-            assert bmi_pred.value == 24.35
+            assert bmi_pred.value == pytest.approx(24.35)
         with check:
-            assert age_le.value == 31.5
+            assert age_le.value == pytest.approx(31.5)
         with check:
-            assert age_gt.value == 24.5
+            assert age_gt.value == pytest.approx(24.5)
 
     def test_in_predicates_intersected(self) -> None:
         """Two `in` predicates on the same variable should be replaced by their intersection.
@@ -1920,10 +1920,10 @@ class TestSimplifyPredicates:
         age_pred = next(p for p in result if p.variable == "age")
         with check:
             assert bmi_pred.operator == "<="
-            assert bmi_pred.value == 27.25
+            assert bmi_pred.value == pytest.approx(27.25)
         with check:
             assert age_pred.operator == ">"
-            assert age_pred.value == 20.95
+            assert age_pred.value == pytest.approx(20.95)
 
     def test_empty_list_returns_empty(self) -> None:
         """An empty input list should produce an empty output list."""

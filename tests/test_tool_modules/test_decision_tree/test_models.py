@@ -32,7 +32,7 @@ class TestPredicate:
         with check:
             assert predicate.operator == ">"
         with check:
-            assert predicate.value == 6.0
+            assert predicate.value == pytest.approx(6.0)
 
     def test_string_predicate_construction_sets_correct_fields(self) -> None:
         """String-value predicate should populate all three fields from constructor arguments."""
@@ -172,7 +172,7 @@ class TestPredicate:
 
         # Assert
         with check:
-            assert predicate.value == 5.0
+            assert predicate.value == pytest.approx(5.0)
 
     def test_scalar_operator_with_string_value_accepted(self) -> None:
         """A scalar operator paired with a string value should be accepted without error.
@@ -431,7 +431,7 @@ class TestDecisionTreeRule:
         with check:
             assert rule.samples == 342
         with check:
-            assert rule.confidence == 0.91
+            assert rule.confidence == pytest.approx(0.91)
 
     def test_regression_rule_construction_sets_correct_fields(self) -> None:
         """Regression rule should populate all fields from constructor arguments.
@@ -461,11 +461,11 @@ class TestDecisionTreeRule:
         with check:
             assert rule.predicates == predicates
         with check:
-            assert rule.prediction == 112_500.0
+            assert rule.prediction == pytest.approx(112_500.0)
         with check:
             assert rule.samples == 87
         with check:
-            assert rule.std == 18_430.75
+            assert rule.std == pytest.approx(18_430.75)
 
     @pytest.mark.parametrize(
         ("rule_class", "kwargs", "expected_model"),
@@ -606,7 +606,7 @@ class TestDecisionTreeRule:
 
         # Assert
         with check:
-            assert rule.std == 0.0
+            assert rule.std == pytest.approx(0.0)
 
     def test_classification_rule_rejects_missing_confidence_raises_validation_error(self) -> None:
         """A ClassificationRule constructed without confidence should raise a ValidationError.
@@ -762,7 +762,7 @@ class TestDecisionTreeResult:
         with check:
             assert tree_result.rules == rules
         with check:
-            assert tree_result.feature_importances["tenure_months"] == 0.61
+            assert tree_result.feature_importances["tenure_months"] == pytest.approx(0.61)
         with check:
             assert tree_result.metrics == {"accuracy": 0.89}
         with check:
@@ -837,11 +837,11 @@ class TestDecisionTreeResult:
         with check:
             assert tree_result.rules == rules
         with check:
-            assert tree_result.feature_importances["years_experience"] == 0.72
+            assert tree_result.feature_importances["years_experience"] == pytest.approx(0.72)
         with check:
-            assert tree_result.metrics["r_squared"] == 0.76
+            assert tree_result.metrics["r_squared"] == pytest.approx(0.76)
         with check:
-            assert tree_result.metrics["rmse"] == 18_450.0
+            assert tree_result.metrics["rmse"] == pytest.approx(18_450.0)
         with check:
             assert tree_result.sample_count == 500
         with check:

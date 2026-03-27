@@ -38,17 +38,17 @@ class TestGetSeriesDescription:
 
         # Assert - verify actual values
         with check:
-            assert result["count"] == 6.0
+            assert result["count"] == pytest.approx(6.0)
         with check:
-            assert result["null_count"] == 0.0
+            assert result["null_count"] == pytest.approx(0.0)
         with check:
-            assert result["mean"] == 30.0
+            assert result["mean"] == pytest.approx(30.0)
         with check:
-            assert result["min"] == 5.0
+            assert result["min"] == pytest.approx(5.0)
         with check:
-            assert result["max"] == 55.0
+            assert result["max"] == pytest.approx(55.0)
         with check:
-            assert result["50%"] == 35.0
+            assert result["50%"] == pytest.approx(35.0)
 
     def test_numeric_float_series_returns_expected_keys_and_values(self) -> None:
         """Given float series, When called, Then returns dict with correct keys and float values."""
@@ -66,13 +66,13 @@ class TestGetSeriesDescription:
             assert set(result.keys()) == expected_keys
         # Assert - verify sample values
         with check:
-            assert result["count"] == 5.0
+            assert result["count"] == pytest.approx(5.0)
         with check:
-            assert result["mean"] == 3.5
+            assert result["mean"] == pytest.approx(3.5)
         with check:
-            assert result["min"] == 1.5
+            assert result["min"] == pytest.approx(1.5)
         with check:
-            assert result["max"] == 5.5
+            assert result["max"] == pytest.approx(5.5)
 
     def test_string_series_returns_appropriate_stats(self) -> None:
         """Given string series, When called, Then returns dict with count, null_count, min, and max."""
@@ -114,9 +114,9 @@ class TestGetSeriesDescription:
         with check:
             assert "null_count" in result
         with check:
-            assert result["count"] == 5.0
+            assert result["count"] == pytest.approx(5.0)
         with check:
-            assert result["null_count"] == 0.0
+            assert result["null_count"] == pytest.approx(0.0)
 
     def test_series_with_null_values_correctly_reports_null_count(self) -> None:
         """Given numeric series with nulls, When called, Then correctly reports null and non-null counts."""
@@ -128,9 +128,9 @@ class TestGetSeriesDescription:
 
         # Assert - count is number of non-null values, null_count is number of nulls
         with check:
-            assert result["null_count"] == 2.0
+            assert result["null_count"] == pytest.approx(2.0)
         with check:
-            assert result["count"] == 3.0
+            assert result["count"] == pytest.approx(3.0)
 
     def test_custom_percentiles_parameter_works(self) -> None:
         """Given integer series, When called with custom percentiles, Then result contains those keys."""
@@ -165,7 +165,7 @@ class TestGetSeriesDescription:
         with check:
             assert isinstance(result, dict)
         with check:
-            assert result["count"] == 0.0
+            assert result["count"] == pytest.approx(0.0)
 
     def test_series_with_all_nulls(self) -> None:
         """Given series with all nulls, When called, Then returns count=0 and correct null_count."""
@@ -177,9 +177,9 @@ class TestGetSeriesDescription:
 
         # Assert - count is 0 (no non-null values), null_count is 4
         with check:
-            assert result["count"] == 0.0
+            assert result["count"] == pytest.approx(0.0)
         with check:
-            assert result["null_count"] == 4.0
+            assert result["null_count"] == pytest.approx(4.0)
         # Assert - at least count and null_count present
         with check:
             assert {"count", "null_count"} <= set(result.keys())
@@ -194,17 +194,17 @@ class TestGetSeriesDescription:
 
         # Assert - single element should have consistent stats
         with check:
-            assert result["count"] == 1.0
+            assert result["count"] == pytest.approx(1.0)
         with check:
-            assert result["null_count"] == 0.0
+            assert result["null_count"] == pytest.approx(0.0)
         with check:
-            assert result["mean"] == 42.0
+            assert result["mean"] == pytest.approx(42.0)
         with check:
-            assert result["min"] == 42.0
+            assert result["min"] == pytest.approx(42.0)
         with check:
-            assert result["max"] == 42.0
+            assert result["max"] == pytest.approx(42.0)
         with check:
-            assert result["50%"] == 42.0
+            assert result["50%"] == pytest.approx(42.0)
 
     def test_series_with_negative_numbers(self) -> None:
         """Given series with negative numbers, When called, Then correctly computes statistics."""
@@ -216,13 +216,13 @@ class TestGetSeriesDescription:
 
         # Assert
         with check:
-            assert result["mean"] == 0.0
+            assert result["mean"] == pytest.approx(0.0)
         with check:
-            assert result["min"] == -50.0
+            assert result["min"] == pytest.approx(-50.0)
         with check:
-            assert result["max"] == 50.0
+            assert result["max"] == pytest.approx(50.0)
         with check:
-            assert result["50%"] == 0.0
+            assert result["50%"] == pytest.approx(0.0)
 
     def test_series_with_large_numbers(self) -> None:
         """Given series with large numbers, When called, Then handles large values correctly."""
@@ -235,11 +235,11 @@ class TestGetSeriesDescription:
 
         # Assert
         with check:
-            assert result["min"] == 1_000_000.0
+            assert result["min"] == pytest.approx(1_000_000.0)
         with check:
-            assert result["max"] == 3_000_000.0
+            assert result["max"] == pytest.approx(3_000_000.0)
         with check:
-            assert result["mean"] == 2_000_000.0
+            assert result["mean"] == pytest.approx(2_000_000.0)
 
 
 class TestToMarkdownTableValidation:
