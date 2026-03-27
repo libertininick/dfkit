@@ -241,6 +241,9 @@ def enable_logging(
     return LoggingHandle(handler_id)
 
 
+# region Helpers
+
+
 def _is_dfkit_record(record: Record) -> bool:
     """Filter to pass all dfkit module records.
 
@@ -256,3 +259,6 @@ def _is_dfkit_record(record: Record) -> bool:
     """
     name = record["name"]
     return name is not None and name.startswith(PACKAGE_NAME)
+
+
+# endregion

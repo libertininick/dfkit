@@ -118,6 +118,9 @@ def to_markdown_table(
         return str(df)
 
 
+# region Helpers
+
+
 def _validate_markdown_table_inputs(
     df: pl.DataFrame,
     columns: Sequence[str] | None,
@@ -171,3 +174,6 @@ def _validate_columns(columns: Sequence[str], df_columns: Sequence[str]) -> None
             missing_columns=sorted(extra_columns),
             available_columns=list(df_columns),
         )
+
+
+# endregion

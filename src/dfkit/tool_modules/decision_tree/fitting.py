@@ -30,19 +30,17 @@ from dfkit.tool_modules.decision_tree.preprocessing import (
     infer_task,
 )
 
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
+# region Module-level constants
 
 MIN_TREE_DEPTH: int = 1  # Lower bound on tree depth accepted by the public API.
 MAX_TREE_DEPTH: int = 6  # Caps tree depth to prevent overfitting and keep rules human-readable.
 AUTO_MIN_SAMPLES_FRACTION: float = 0.02  # Scales the leaf floor with dataset size: 2% of n_rows.
 AUTO_MIN_SAMPLES_FLOOR: int = 5  # Absolute minimum leaf size regardless of dataset size.
 
+# endregion
 
-# ---------------------------------------------------------------------------
-# Public interface
-# ---------------------------------------------------------------------------
+
+# region Public interface
 
 
 def analyze_with_decision_tree(
@@ -267,10 +265,10 @@ def compute_feature_importance(
         renormalized[-1] = (last_name, round(1.0 - others_sum, 4))
     return dict(renormalized)
 
+# endregion
 
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
+
+# region Helpers
 
 
 class PendingNode(NamedTuple):
@@ -761,3 +759,6 @@ def _compute_effective_min_samples(n_rows: int, user_min_samples_leaf: int) -> i
     """
     auto_floor = max(AUTO_MIN_SAMPLES_FLOOR, int(AUTO_MIN_SAMPLES_FRACTION * n_rows))
     return max(user_min_samples_leaf, auto_floor)
+
+
+# endregion

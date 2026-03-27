@@ -10,9 +10,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-# ---------------------------------------------------------------------------
-# Public type aliases
-# ---------------------------------------------------------------------------
+# region Public type aliases
 
 type PredicateOp = Literal[">", ">=", "!=", "==", "<", "<=", "in", "not in"]
 
@@ -22,9 +20,9 @@ type DecisionTreeTask = Literal["classification", "regression"]
 
 type DecisionTree = DecisionTreeClassifier | DecisionTreeRegressor
 
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
+# endregion
+
+# region Module-level constants
 
 SCALAR_OPS: dict[str, Callable[[Any, Any], bool]] = {
     ">": operator.gt,
@@ -35,9 +33,9 @@ SCALAR_OPS: dict[str, Callable[[Any, Any], bool]] = {
     "!=": operator.ne,
 }
 
-# ---------------------------------------------------------------------------
-# Public models
-# ---------------------------------------------------------------------------
+# endregion
+
+# region Public models
 
 
 class Predicate(BaseModel):
@@ -85,6 +83,8 @@ class Predicate(BaseModel):
         ),
     )
 
+    # region Private Methods
+
     @model_validator(mode="after")
     def _validate_operator_value_compatibility(self) -> Predicate:
         """Validate that the operator and value type are compatible.
@@ -101,6 +101,8 @@ class Predicate(BaseModel):
         except TypeError as exc:
             raise ValueError(str(exc)) from exc
         return self
+
+    # endregion
 
     def __str__(self) -> str:
         """Return a human-readable representation of this predicate.
@@ -342,6 +344,8 @@ class DecisionTreeResult(BaseModel):
         description="Number of leaf nodes in the fitted tree.",
     )
 
+    # region Private Methods
+
     @field_validator("feature_importances", mode="after")
     @classmethod
     def _validate_feature_importance_sums_to_one(cls, value: dict[str, float]) -> dict[str, float]:
@@ -417,10 +421,12 @@ class DecisionTreeResult(BaseModel):
             raise ValueError(f"rules have task inconsistent with result task '{self.task}'")
         return self
 
+    # endregion
 
-# ---------------------------------------------------------------------------
-# Private helpers -- Predicate operator evaluation
-# ---------------------------------------------------------------------------
+# endregion
+
+
+# region Helpers
 
 
 def _apply_operator(
@@ -471,3 +477,6 @@ def _validate_operator_threshold_types(
         raise TypeError(f"Scalar operator '{op}' cannot compare against a set")
     if op in {"in", "not in"} and not isinstance(threshold, set):
         raise TypeError(f"Membership operator '{op}' requires a set threshold")
+
+
+# endregion

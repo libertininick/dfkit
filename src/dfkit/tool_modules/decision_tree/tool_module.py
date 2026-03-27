@@ -12,9 +12,7 @@ from dfkit.tool_modules.models import ToolCallError
 from dfkit.tool_modules.tool_module_context import ToolModuleContext
 from dfkit.utils.logging import TOOL_CALL_LEVEL
 
-# ---------------------------------------------------------------------------
-# Public interface
-# ---------------------------------------------------------------------------
+# region Public interface
 
 
 class DecisionTreeModule:
@@ -167,3 +165,5 @@ class DecisionTreeModule:
             result.sample_count,
         )
         return result
+
+# endregion

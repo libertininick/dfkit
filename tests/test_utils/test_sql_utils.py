@@ -1120,9 +1120,7 @@ class TestValidateSQLTables:
     references in SQL expressions against a set of allowed tables.
     """
 
-    # -------------------------------------------------------------------------
-    # Success Cases (should not raise)
-    # -------------------------------------------------------------------------
+    # region Success Cases (should not raise)
 
     def test_validate_sql_tables_single_valid_table_succeeds(self) -> None:
         """Query referencing a single valid table should not raise.
@@ -1202,9 +1200,9 @@ class TestValidateSQLTables:
         # Act & Assert - should not raise
         _validate_sql_tables(expression, valid_tables, query)
 
-    # -------------------------------------------------------------------------
-    # Failure Cases (should raise SQLTableError)
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Failure Cases (should raise SQLTableError)
 
     def test_validate_sql_tables_invalid_table_raises_error(self) -> None:
         """Query referencing only invalid tables should raise SQLTableError.
@@ -1280,9 +1278,9 @@ class TestValidateSQLTables:
         with check:
             assert "beta" in exc_info.value.invalid_tables, "invalid_tables should contain 'beta'"
 
-    # -------------------------------------------------------------------------
-    # CTE and Subquery Tests
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region CTE and Subquery Tests
 
     def test_validate_sql_tables_cte_not_counted_as_table_succeeds(self) -> None:
         """CTE names should not be treated as database tables.
@@ -1311,9 +1309,9 @@ class TestValidateSQLTables:
         # Act & Assert - should not raise
         _validate_sql_tables(parse_sql(query), valid_tables, query)
 
-    # -------------------------------------------------------------------------
-    # Error Attribute Tests
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Error Attribute Tests
 
     def test_validate_sql_tables_error_contains_query(self) -> None:
         """SQLTableError should contain the original query string.
@@ -1348,6 +1346,8 @@ class TestValidateSQLTables:
 
         with check:
             assert isinstance(exc_info.value.invalid_tables, list), "invalid_tables should be a list"
+
+    # endregion
 
 
 class TestValidateSQLColumnsValidCases:
@@ -1649,9 +1649,7 @@ class TestValidateSQLColumnsEdgeCases:
             _validate_sql_columns(parse_sql(query), {"users": {"id", "name"}}, query)
 
 
-# =============================================================================
-# Tests for validate_sql function
-# =============================================================================
+# region Tests for validate_sql function
 
 
 class TestValidateSQLSuccessCases:
@@ -2016,3 +2014,5 @@ class TestValidateSQLEdgeCases:
     def test_validate_sql_star_select_succeeds(self) -> None:
         """SELECT * should not raise errors."""
         validate_sql("SELECT * FROM users", {"users": {"id", "name", "email"}})
+
+# endregion

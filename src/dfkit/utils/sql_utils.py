@@ -25,9 +25,7 @@ from dfkit.utils.exceptions import (
 __all__ = ["DESTRUCTIVE_COMMANDS", "extract_table_names", "parse_sql", "validate_sql"]
 
 
-# =============================================================================
-# Constants
-# =============================================================================
+# region Constants
 
 # Common destructive SQL commands that modify or delete data/schema.
 # Use with parse_sql's blacklist parameter to block these operations.
@@ -57,10 +55,10 @@ _EXPRESSION_TYPE_MAP: Final[dict[type[exp.Expression], str]] = {
     exp.Except: "SELECT",
 }
 
+# endregion
 
-# =============================================================================
-# Data Classes
-# =============================================================================
+
+# region Data Classes
 
 
 @dataclass(frozen=True)
@@ -102,10 +100,10 @@ class _ColumnErrors:
         """Return True if any column errors were detected."""
         return bool(self.invalid_columns or self.ambiguous_columns or self.not_found_columns)
 
+# endregion
 
-# =============================================================================
-# Public Interface
-# =============================================================================
+
+# region Public Interface
 
 
 def parse_sql(
@@ -317,10 +315,10 @@ def extract_table_names(expression: exp.Expression) -> list[str]:
 
     return [table.name.lower() for table in tables]
 
+# endregion
 
-# =============================================================================
-# Private Helpers: Command Type
-# =============================================================================
+
+# region Helpers
 
 
 def _get_sql_command_type(expression: exp.Expression) -> str | None:
@@ -334,11 +332,6 @@ def _get_sql_command_type(expression: exp.Expression) -> str | None:
             the expression type is not recognized.
     """
     return _EXPRESSION_TYPE_MAP.get(type(expression))
-
-
-# =============================================================================
-# Private Helpers: Table Validation
-# =============================================================================
 
 
 def _validate_sql_tables(expression: exp.Expression, valid_tables: Collection[str], query_str: str) -> None:
@@ -376,11 +369,6 @@ def _validate_sql_tables(expression: exp.Expression, valid_tables: Collection[st
             query=query_str,
             invalid_tables=invalid_tables,
         )
-
-
-# =============================================================================
-# Private Helpers: Column Validation
-# =============================================================================
 
 
 def _validate_sql_columns(
@@ -639,11 +627,6 @@ def _build_alias_to_table_map(scope: Scope) -> dict[str, str]:
     }
 
 
-# =============================================================================
-# Private Helpers: Error Messages
-# =============================================================================
-
-
 def _build_column_error_message(
     invalid_columns: dict[str, list[str]],
     ambiguous_columns: dict[str, list[str]],
@@ -698,3 +681,6 @@ def _find_original_table_name(table_name: str, table_columns: dict[str, set[str]
         (orig_name for orig_name in table_columns if orig_name.lower() == table_name),
         table_name,
     )
+
+
+# endregion

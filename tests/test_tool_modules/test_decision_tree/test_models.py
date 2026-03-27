@@ -19,9 +19,7 @@ from dfkit.tool_modules.decision_tree.models import (
 class TestPredicate:
     """Tests for the Predicate model: construction, repr/str, eval, and serialization."""
 
-    # ------------------------------------------------------------------
-    # Construction tests
-    # ------------------------------------------------------------------
+    # region Construction tests
 
     def test_numeric_predicate_construction_sets_correct_fields(self) -> None:
         """Numeric predicate should populate all three fields from constructor arguments."""
@@ -88,9 +86,9 @@ class TestPredicate:
         with pytest.raises(ValidationError):
             Predicate(variable="x", operator="~=", value=1.0)  # type: ignore[arg-type]
 
-    # ------------------------------------------------------------------
-    # Operator-value compatibility validation tests
-    # ------------------------------------------------------------------
+    # endregion
+
+    # region Operator-value compatibility validation tests
 
     @pytest.mark.parametrize("operator", ["in", "not in"])
     def test_membership_operator_with_scalar_value_raises_validation_error(self, operator: str) -> None:
@@ -189,9 +187,9 @@ class TestPredicate:
         with check:
             assert predicate.value == "active"
 
-    # ------------------------------------------------------------------
-    # __str__ tests
-    # ------------------------------------------------------------------
+    # endregion
+
+    # region __str__ tests
 
     def test_str_numeric_produces_expected_string(self) -> None:
         """str() of a numeric predicate should format as 'variable operator value'."""
@@ -226,9 +224,9 @@ class TestPredicate:
         # Assert — sorted alphabetically: basic before standard
         assert representation == "plan_type in {basic, standard}"
 
-    # ------------------------------------------------------------------
-    # Eval tests
-    # ------------------------------------------------------------------
+    # endregion
+
+    # region Eval tests
 
     def test_eval_greater_than_returns_correct_truth_values(self) -> None:
         """Eval with '>' should return True when x exceeds the threshold and False otherwise."""
@@ -340,9 +338,9 @@ class TestPredicate:
         with check:
             assert predicate.eval("inactive") is False
 
-    # ------------------------------------------------------------------
-    # Serialization tests
-    # ------------------------------------------------------------------
+    # endregion
+
+    # region Serialization tests
 
     def test_serialization_roundtrip_numeric_preserves_all_fields(self) -> None:
         """model_dump / model_validate roundtrip should preserve all fields for a numeric predicate."""
@@ -394,6 +392,8 @@ class TestPredicate:
             assert restored.operator == original.operator
         with check:
             assert restored.value == original.value
+
+    # endregion
 
 
 class TestDecisionTreeRule:

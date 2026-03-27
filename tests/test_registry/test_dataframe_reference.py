@@ -16,9 +16,7 @@ from dfkit.registry.models import DataFrameReference
 class TestDataFrameReference:
     """Tests for the DataFrameReference model."""
 
-    # -------------------------------------------------------------------------
-    # from_dataframe factory method tests
-    # -------------------------------------------------------------------------
+    # region from_dataframe factory method tests
 
     def test_from_dataframe_minimal_arguments_creates_valid_reference(self) -> None:
         """Given DataFrame and name only, When from_dataframe called, Then creates reference with defaults."""
@@ -165,9 +163,9 @@ class TestDataFrameReference:
         with check:
             assert not ref.column_summaries["c"].description
 
-    # -------------------------------------------------------------------------
-    # Field tests
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Field tests
 
     def test_id_field_follows_dataframe_id_pattern(self) -> None:
         """Given DataFrameReference, When id accessed, Then follows df_<8 hex chars> pattern."""
@@ -293,9 +291,9 @@ class TestDataFrameReference:
         with check:
             assert ref.parent_ids == parent_ids
 
-    # -------------------------------------------------------------------------
-    # source_query field tests (existing tests)
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region source_query field tests (existing tests)
 
     def test_source_query_default_none(self) -> None:
         """Given DataFrameReference without source_query, When checked, Then source_query is None."""
@@ -369,9 +367,9 @@ class TestDataFrameReference:
         with check:
             assert ref_dict["source_query"] is None
 
-    # -------------------------------------------------------------------------
-    # Base/derivative consistency validation tests
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Base/derivative consistency validation tests
 
     def test_source_query_without_parent_ids_raises(self) -> None:
         """Given source_query but no parent_ids, When constructing, Then raises ValidationError."""
@@ -421,9 +419,9 @@ class TestDataFrameReference:
         with check:
             assert ref.source_query == "SELECT * FROM base"
 
-    # -------------------------------------------------------------------------
-    # Serialization tests
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Serialization tests
 
     def test_model_dump_contains_all_fields(self) -> None:
         """Given DataFrameReference, When model_dump called, Then all fields present."""
@@ -552,9 +550,9 @@ class TestDataFrameReference:
         with check:
             assert summary["description"] == "Integer values"
 
-    # -------------------------------------------------------------------------
-    # Schema and field descriptions tests
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Schema and field descriptions tests
 
     def test_all_fields_have_descriptions_in_schema(self) -> None:
         """Given DataFrameReference model, When schema inspected, Then all fields have descriptions."""
@@ -592,9 +590,9 @@ class TestDataFrameReference:
         with check:
             assert "description" in properties["source_query"]
 
-    # -------------------------------------------------------------------------
-    # Edge case tests
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Edge case tests
 
     def test_dataframe_with_special_column_names(self) -> None:
         """Given DataFrame with special column names, When from_dataframe called, Then names preserved."""
@@ -680,3 +678,5 @@ class TestDataFrameReference:
             assert ref.column_summaries["no_null"].null_count == 0
         with check:
             assert ref.column_summaries["no_null"].count == 3
+
+    # endregion

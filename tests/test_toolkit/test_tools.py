@@ -15,9 +15,7 @@ from dfkit.tool_modules.models import ToolCallError
 from dfkit.tool_modules.tool_module_context import ToolModuleContext
 from dfkit.toolkit import DataFrameToolkit
 
-# ============================================================================
-# Mock modules for testing tool module composition
-# ============================================================================
+# region Mock modules for testing tool module composition
 
 
 class MockModuleA:
@@ -208,10 +206,10 @@ class MockModuleWithNoTools:
         """
         return []
 
+# endregion
 
-# ============================================================================
-# Tests
-# ============================================================================
+
+# region Tests
 
 
 class TestGetTools:
@@ -1501,10 +1499,10 @@ class TestViewAsMarkdownTable:
         with check:
             assert "view_as_markdown_table" in tool_names
 
+# endregion
 
-# ============================================================================
-# Phase 2: Tool module composition tests
-# ============================================================================
+
+# region Tool module composition tests
 
 
 class TestGetToolsWithModules:
@@ -1979,3 +1977,5 @@ class TestGetCoreToolsUnaffected:
         core_tool_names = {t.name for t in core_tools_after}
         with check:
             assert "mock_tool_a" not in core_tool_names
+
+# endregion

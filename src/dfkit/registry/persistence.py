@@ -115,7 +115,7 @@ def restore_registry_from_state(
     return registry
 
 
-# Private helpers
+# region Helpers
 
 
 def _map_dataframe_keys_to_ids(
@@ -474,3 +474,6 @@ def _execute_reconstruction_query(source_query: str, name: str, registry: DataFr
     result_df = ensure_dataframe(result_df)
 
     return result_df
+
+
+# endregion

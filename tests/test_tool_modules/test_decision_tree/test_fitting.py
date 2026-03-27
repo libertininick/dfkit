@@ -26,10 +26,6 @@ from dfkit.tool_modules.decision_tree.preprocessing import (
     encode_target,
 )
 
-# ---------------------------------------------------------------------------
-# Phase 3: Tree Fitting, Rule Extraction, Metrics and Orchestration
-# ---------------------------------------------------------------------------
-
 
 class TestFitTree:
     """Tests for `fit_tree`: fits sklearn decision trees with configurable hyperparameters."""
@@ -2115,9 +2111,7 @@ class TestExtractRulesSimplification:
                 )
 
 
-# ---------------------------------------------------------------------------
-# Private test helpers
-# ---------------------------------------------------------------------------
+# region Private test helpers
 
 
 def _make_churn_classification_data(n_rows: int = 80) -> tuple[np.ndarray, np.ndarray]:
@@ -2171,3 +2165,6 @@ def _make_house_price_regression_data(n_rows: int = 80) -> tuple[np.ndarray, np.
     price = 100_000 + sqft * 150 + bedrooms * 10_000 + rng.normal(0, 15_000, n_rows)
     feature_matrix = np.column_stack([sqft, bedrooms])
     return feature_matrix, price
+
+
+# endregion

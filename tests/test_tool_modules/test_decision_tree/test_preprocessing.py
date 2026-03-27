@@ -18,10 +18,6 @@ from dfkit.tool_modules.decision_tree.preprocessing import (
     infer_task,
 )
 
-# ---------------------------------------------------------------------------
-# Phase 2: Preprocessing Pipeline
-# ---------------------------------------------------------------------------
-
 
 class TestClassifyColumn:
     """Tests for classify_column: maps Polars dtypes to broad feature categories."""

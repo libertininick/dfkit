@@ -133,9 +133,7 @@ class DataFrameToolkit:
         )
         self._module_cache: dict[type[ToolModule], ToolModule] = {}
 
-    # -------------------------------------------------------------------------
-    # Tool Access (Main API)
-    # -------------------------------------------------------------------------
+    # region Tool Access (Main API)
 
     def get_tools(
         self,
@@ -275,9 +273,9 @@ class DataFrameToolkit:
 
         return "\n".join(prompt_parts)
 
-    # -------------------------------------------------------------------------
-    # Public Methods
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Public Methods
 
     @property
     def references(self) -> tuple[DataFrameReference, ...]:
@@ -800,9 +798,9 @@ class DataFrameToolkit:
         """
         return DataFrameToolkitState(references=list(self._registry.references.values()))
 
-    # -------------------------------------------------------------------------
-    # Public Class Methods
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Public Class Methods
 
     @classmethod
     def from_state(
@@ -863,9 +861,9 @@ class DataFrameToolkit:
         )
         return cls(registry=registry)
 
-    # -------------------------------------------------------------------------
-    # Private Helpers
-    # -------------------------------------------------------------------------
+    # endregion
+
+    # region Private Methods
 
     def _get_or_create_module(self, module_class: type[ToolModule]) -> ToolModule:
         """Get a cached module instance, creating it on first access.
@@ -1143,10 +1141,10 @@ class DataFrameToolkit:
         """
         return any(ref.name == name for ref in self._registry.references.values())
 
+    # endregion
 
-# -----------------------------------------------------------------------------
-# Private Helpers
-# -----------------------------------------------------------------------------
+
+# region Helpers
 
 # Tool logging message templates
 _TOOL_CALL_MSG = "Tool call: {tool_name}"
@@ -1204,3 +1202,6 @@ def _handle_column_validation_error(
             "invalid_columns": error.missing_columns,
         },
     )
+
+
+# endregion

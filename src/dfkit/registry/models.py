@@ -136,6 +136,8 @@ class DataFrameReference(BaseModel):
         """Whether this is a base (user-provided) reference with no lineage."""
         return not self.parent_ids
 
+    # region Private Methods
+
     @model_validator(mode="after")
     def _validate_base_derivative_consistency(self) -> DataFrameReference:
         """Enforce that parent_ids and source_query are consistent.
@@ -165,6 +167,8 @@ class DataFrameReference(BaseModel):
             raise ValueError(msg)
 
         return self
+
+    # endregion
 
     @classmethod
     def from_dataframe(

@@ -16,9 +16,7 @@ from dfkit.tool_modules.models import ToolCallError
 from dfkit.tool_modules.tool_module import ToolModule
 from dfkit.toolkit import DataFrameToolkit
 
-# ---------------------------------------------------------------------------
-# Shared fixture
-# ---------------------------------------------------------------------------
+# region Shared fixture
 
 
 @pytest.fixture
@@ -42,10 +40,10 @@ def toolkit_with_data() -> DataFrameToolkit:
     toolkit.register_dataframe("customers", df)
     return toolkit
 
+# endregion
 
-# ---------------------------------------------------------------------------
-# TestDecisionTreeModule
-# ---------------------------------------------------------------------------
+
+# region TestDecisionTreeModule
 
 
 class TestDecisionTreeModule:
@@ -625,10 +623,10 @@ class TestDecisionTreeModule:
         with check:
             assert result.depth <= max_depth
 
+# endregion
 
-# ---------------------------------------------------------------------------
-# TestDecisionTreeModuleIntegration
-# ---------------------------------------------------------------------------
+
+# region TestDecisionTreeModuleIntegration
 
 
 class TestDecisionTreeModuleIntegration:
@@ -674,3 +672,5 @@ class TestDecisionTreeModuleIntegration:
 
         # Assert
         assert "analyze_with_decision_tree" not in tool_names
+
+# endregion

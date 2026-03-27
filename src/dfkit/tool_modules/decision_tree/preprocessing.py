@@ -12,9 +12,7 @@ from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
 
 from dfkit.tool_modules.decision_tree.models import ColumnType, DecisionTreeTask
 
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
+# region Module-level constants
 
 DTYPE_TO_COLUMN_TYPE: dict[type[pl.DataType] | pl.DataType, ColumnType] = {
     pl.Int8: "numeric",
@@ -54,9 +52,9 @@ INTEGER_DTYPES: frozenset[type[pl.DataType]] = frozenset({
 MAX_CLASSIFICATION_UNIQUE_COUNT: int = 20
 MAX_CLASSIFICATION_UNIQUE_RATIO: float = 0.05
 
-# ---------------------------------------------------------------------------
-# Public interface -- Column type classification
-# ---------------------------------------------------------------------------
+# endregion
+
+# region Public interface -- Column type classification
 
 
 class ExcludedFeature(NamedTuple):
@@ -86,10 +84,10 @@ class FeatureEncoder:
     column_type: ColumnType
     category_mapping: dict[int, str] | None = field(default=None)
 
+# endregion
 
-# ---------------------------------------------------------------------------
-# Public interface -- Column classification and feature filtering
-# ---------------------------------------------------------------------------
+
+# region Public interface -- Column classification and feature filtering
 
 
 def classify_column(dtype: pl.DataType) -> ColumnType:
@@ -153,10 +151,10 @@ def filter_features(
 
     return kept, excluded
 
+# endregion
 
-# ---------------------------------------------------------------------------
-# Public interface -- Task type detection
-# ---------------------------------------------------------------------------
+
+# region Public interface -- Task type detection
 
 
 def infer_task(
@@ -189,10 +187,10 @@ def infer_task(
 
     return "regression"
 
+# endregion
 
-# ---------------------------------------------------------------------------
-# Public interface -- Feature and target encoding
-# ---------------------------------------------------------------------------
+
+# region Public interface -- Feature and target encoding
 
 
 def encode_features(
@@ -273,10 +271,10 @@ def encode_target(
     category_mapping = _make_category_mapping(label_encoder.classes_)
     return encoded_array, category_mapping
 
+# endregion
 
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
+
+# region Helpers
 
 
 def _get_exclusion_reason(series: pl.Series, row_count: int) -> str | None:
@@ -417,3 +415,6 @@ def _encode_categorical_series(series: pl.Series) -> tuple[np.ndarray, dict[int,
     encoded_column = ordinal_encoder.fit_transform(raw_column).astype(np.float64).ravel()
     category_mapping = _make_category_mapping(ordinal_encoder.categories_[0])
     return encoded_column, category_mapping
+
+
+# endregion
