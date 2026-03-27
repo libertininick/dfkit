@@ -24,7 +24,20 @@ from langchain_core.tools import BaseTool, tool
 from loguru import logger
 from sqlglot import exp
 
-from dfkit.exceptions import (
+from dfkit.registry.dataframe_registry import DataFrameRegistry
+from dfkit.registry.identifier import (
+    DATAFRAME_ID_PATTERN,
+    DataFrameId,
+)
+from dfkit.registry.models import (
+    DataFrameReference,
+    DataFrameToolkitState,
+)
+from dfkit.registry.persistence import REL_TOL_DEFAULT, restore_registry_from_state
+from dfkit.tool_modules.models import ToolCallError
+from dfkit.tool_modules.tool_module import ToolModule
+from dfkit.tool_modules.tool_module_context import ToolModuleContext
+from dfkit.utils.exceptions import (
     ColumnsNotFoundError,
     DuplicateColumnsError,
     SQLBlacklistedCommandError,
@@ -32,22 +45,9 @@ from dfkit.exceptions import (
     SQLSyntaxError,
     SQLTableError,
 )
-from dfkit.identifier import (
-    DATAFRAME_ID_PATTERN,
-    DataFrameId,
-)
-from dfkit.logging import TOOL_CALL_LEVEL
-from dfkit.models import (
-    DataFrameReference,
-    DataFrameToolkitState,
-    ToolCallError,
-)
-from dfkit.persistence import REL_TOL_DEFAULT, restore_registry_from_state
-from dfkit.polars_utils import ensure_dataframe, to_markdown_table
-from dfkit.registry import DataFrameRegistry
-from dfkit.sql_utils import DESTRUCTIVE_COMMANDS, extract_table_names, validate_sql
-from dfkit.tool_module import ToolModule
-from dfkit.tool_module_context import ToolModuleContext
+from dfkit.utils.logging import TOOL_CALL_LEVEL
+from dfkit.utils.polars_utils import ensure_dataframe, to_markdown_table
+from dfkit.utils.sql_utils import DESTRUCTIVE_COMMANDS, extract_table_names, validate_sql
 
 
 class DataFrameToolkit:

@@ -9,7 +9,8 @@ import polars as pl
 import pytest
 from pytest_check import check
 
-from dfkit.models import DataFrameReference, ToolCallError
+from dfkit.registry.models import DataFrameReference
+from dfkit.tool_modules.models import ToolCallError
 from dfkit.toolkit import DataFrameToolkit
 
 

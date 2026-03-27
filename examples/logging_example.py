@@ -20,7 +20,7 @@ Key concepts shown here:
 import polars as pl
 
 from dfkit import DataFrameToolkit, enable_logging
-from dfkit.models import ToolCallError
+from dfkit.tool_modules import ToolCallError
 
 # Enable logging at TOOL_CALL level (and above) with full log format for better visibility of log details
 with enable_logging(

@@ -2,9 +2,9 @@
 
 from loguru import logger
 
-from dfkit.logging import PACKAGE_NAME, enable_logging
-from dfkit.tool_module import ToolModule
+from dfkit.tool_modules.tool_module import ToolModule
 from dfkit.toolkit import DataFrameToolkit
+from dfkit.utils.logging import PACKAGE_NAME, enable_logging
 
 logger.disable(PACKAGE_NAME)  # noqa: RUF067 - Disable logging for the dfkit module by default
 

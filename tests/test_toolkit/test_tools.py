@@ -10,8 +10,9 @@ import pytest
 from langchain_core.tools import BaseTool, tool
 from pytest_check import check
 
-from dfkit.models import DataFrameReference, ToolCallError
-from dfkit.tool_module_context import ToolModuleContext
+from dfkit.registry.models import DataFrameReference
+from dfkit.tool_modules.models import ToolCallError
+from dfkit.tool_modules.tool_module_context import ToolModuleContext
 from dfkit.toolkit import DataFrameToolkit
 
 # ============================================================================
