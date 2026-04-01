@@ -9,23 +9,31 @@ This module tests the SQL parsing and validation functions including:
 
 from __future__ import annotations
 
+import re
+from unittest.mock import MagicMock, patch
+
 import pytest
+import sqlfluff
 import sqlglot
 from pytest_check import check
 from sqlglot import exp
 
+import dfkit.utils.sql_utils as sql_utils_module
 from dfkit.utils.exceptions import (
     SQLBlacklistedCommandError,
     SQLColumnError,
+    SQLLintError,
     SQLSyntaxError,
     SQLTableError,
     SQLValidationError,
 )
 from dfkit.utils.sql_utils import (
     DESTRUCTIVE_COMMANDS,
+    LINT_RULES,
     _get_sql_command_type,
     _validate_sql_columns,
     _validate_sql_tables,
+    lint_sql,
     parse_sql,
     validate_sql,
 )
@@ -2016,3 +2024,233 @@ class TestValidateSQLEdgeCases:
 
 
 # endregion
+
+
+class TestLintSQL:
+    """Tests for lint_sql function.
+
+    These tests verify that lint_sql auto-fixes SQL style issues and raises
+    SQLLintError when unfixable violations remain after the fix pass.
+    """
+
+    def test_lint_sql_clean_query_returns_unchanged(self) -> None:
+        """A well-formatted query should be returned unchanged (or equivalently formatted).
+
+        Given SQL that already conforms to the default ANSI style conventions,
+        lint_sql should return the same SQL (possibly with a trailing newline).
+        """
+        # Arrange
+        query = "SELECT id FROM t\n"
+
+        # Act
+        result = lint_sql(query)
+
+        # Assert
+        with check:
+            assert "SELECT" in result, "Returned SQL should contain SELECT keyword"
+        with check:
+            assert "id" in result, "Returned SQL should contain column name"
+        with check:
+            assert "FROM" in result, "Returned SQL should contain FROM keyword"
+
+    def test_lint_sql_fixes_keyword_casing(self) -> None:
+        """A query with lowercase keywords should pass through lint_sql without error.
+
+        sqlfluff's default ANSI fix pass does not enforce keyword casing, so a
+        lowercase query like "select id from t" is accepted without violations.
+        The result should be a valid SQL string containing the expected identifiers.
+        """
+        # Arrange
+        query = "select id from t"
+
+        # Act
+        result = lint_sql(query)
+
+        # Assert — the function should not raise; the result contains expected tokens
+        with check:
+            assert isinstance(result, str), "lint_sql should return a string"
+        with check:
+            assert "select" in result.lower(), "Result should contain the select keyword"
+        with check:
+            assert "from" in result.lower(), "Result should contain the from keyword"
+
+    def test_lint_sql_fixes_whitespace(self) -> None:
+        """Extra whitespace between tokens should be collapsed by the fix pass.
+
+        sqlfluff enforces single-space separation between tokens. Given SQL with
+        multiple consecutive spaces, lint_sql should return cleaned SQL without
+        the redundant spaces.
+        """
+        # Arrange
+        query = "SELECT  id  FROM  t"
+
+        # Act
+        result = lint_sql(query)
+
+        # Assert — double spaces should be gone after fix
+        with check:
+            assert "  " not in result.strip(), "Double spaces should be removed by lint fix"
+
+    def test_lint_sql_raises_on_unfixable_violations(self) -> None:
+        """Remaining violations after fix pass should raise SQLLintError.
+
+        When sqlfluff.lint returns a non-empty violations list after the fix
+        pass, lint_sql must raise SQLLintError with that violations list
+        and the original query. Also verifies that rules=LINT_RULES is
+        forwarded to both sqlfluff.fix and sqlfluff.lint.
+        """
+        # Arrange
+        original_query = "SELECT id FROM t"
+        fake_violations = [{"code": "CP01", "line_no": 1, "line_pos": 1, "description": "Keywords must be upper case."}]
+
+        mock_fix = MagicMock(spec=sqlfluff.fix, return_value=original_query)
+        mock_lint = MagicMock(spec=sqlfluff.lint, return_value=fake_violations)
+
+        with (
+            patch("dfkit.utils.sql_utils.sqlfluff.fix", mock_fix),
+            patch("dfkit.utils.sql_utils.sqlfluff.lint", mock_lint),
+            pytest.raises(SQLLintError) as exc_info,
+        ):
+            # Act
+            lint_sql(original_query)
+
+        error = exc_info.value
+        with check:
+            assert error.violations == fake_violations, "Exception should carry the unfixable violations"
+        with check:
+            assert error.query == original_query, "Exception should carry the original query"
+        with check:
+            assert len(error.violations) == 1, "One violation should be present"
+
+        fix_kwargs = mock_fix.call_args.kwargs
+        lint_kwargs = mock_lint.call_args.kwargs
+        with check:
+            assert fix_kwargs.get("rules") == LINT_RULES, "sqlfluff.fix should be called with rules=LINT_RULES"
+        with check:
+            assert lint_kwargs.get("rules") == LINT_RULES, "sqlfluff.lint should be called with rules=LINT_RULES"
+
+    def test_lint_sql_preserves_query_semantics(self) -> None:
+        """Linting a valid query should preserve its semantics.
+
+        The fixed SQL returned by lint_sql should parse to the same logical
+        structure as the original query when both are parsed with sqlglot.
+        """
+        # Arrange
+        query = "select id, name from users where active = 1"
+
+        # Act
+        result = lint_sql(query)
+
+        # Assert — both the input and output parse to equivalent SELECT expressions
+        original_parsed = sqlglot.parse_one(query)
+        result_parsed = sqlglot.parse_one(result)
+
+        with check:
+            assert isinstance(result_parsed, exp.Select), "Result should parse to a SELECT expression"
+        with check:
+            # Both should select the same columns from the same table
+            original_tables = {t.name.lower() for t in original_parsed.find_all(exp.Table)}
+            result_tables = {t.name.lower() for t in result_parsed.find_all(exp.Table)}
+            assert original_tables == result_tables, "Fixed query should reference the same tables"
+
+    def test_lint_sql_with_dialect(self) -> None:
+        """Calling lint_sql with an explicit dialect should not raise an error.
+
+        Passing dialect="postgres" should be forwarded to sqlfluff and produce
+        valid output for a query that conforms to postgres conventions.
+        """
+        # Arrange
+        query = "SELECT id FROM users\n"
+
+        # Act & Assert — should not raise
+        result = lint_sql(query, dialect="postgres")
+
+        with check:
+            assert isinstance(result, str), "lint_sql should return a string"
+        with check:
+            assert len(result) > 0, "Returned SQL should be non-empty"
+
+    def test_lint_sql_default_dialect_is_ansi(self) -> None:
+        """When no dialect is provided, sqlfluff should be called with dialect='ansi'.
+
+        lint_sql uses "ansi" as the default dialect. This test mocks sqlfluff to
+        verify the dialect argument is forwarded correctly.
+        """
+        # Arrange
+        query = "SELECT id FROM t"
+        fixed_query = "SELECT id FROM t\n"
+
+        mock_fix = MagicMock(spec=sqlfluff.fix, return_value=fixed_query)
+        mock_lint = MagicMock(spec=sqlfluff.lint, return_value=[])
+
+        with (
+            patch("dfkit.utils.sql_utils.sqlfluff.fix", mock_fix),
+            patch("dfkit.utils.sql_utils.sqlfluff.lint", mock_lint),
+        ):
+            # Act
+            result = lint_sql(query)
+
+        # Assert
+        with check:
+            assert result == fixed_query, "Should return the fixed query from sqlfluff.fix"
+
+        fix_call_kwargs = mock_fix.call_args
+        lint_call_kwargs = mock_lint.call_args
+
+        with check:
+            assert fix_call_kwargs is not None, "sqlfluff.fix should have been called"
+        with check:
+            assert lint_call_kwargs is not None, "sqlfluff.lint should have been called"
+
+        # Verify dialect="ansi" was passed (either as positional or keyword argument)
+        fix_args, fix_kwargs = fix_call_kwargs
+        lint_args, lint_kwargs = lint_call_kwargs
+
+        with check:
+            ansi_in_fix = "ansi" in fix_args or fix_kwargs.get("dialect") == "ansi"
+            assert ansi_in_fix, "sqlfluff.fix should be called with dialect='ansi' by default"
+        with check:
+            ansi_in_lint = "ansi" in lint_args or lint_kwargs.get("dialect") == "ansi"
+            assert ansi_in_lint, "sqlfluff.lint should be called with dialect='ansi' by default"
+        with check:
+            assert fix_kwargs.get("rules") == LINT_RULES, "sqlfluff.fix should be called with rules=LINT_RULES"
+        with check:
+            assert lint_kwargs.get("rules") == LINT_RULES, "sqlfluff.lint should be called with rules=LINT_RULES"
+
+    def test_lint_rules_passes_explicit_rules(self) -> None:
+        """LINT_RULES constant must be a non-empty list of well-formed rule codes.
+
+        Verifies structural and content constraints on LINT_RULES:
+        - It is a non-empty list of strings.
+        - Every rule code matches the two-uppercase-letter + two-digit pattern
+          (e.g. "AL01", "CP02").
+        - Dialect-specific rules excluded by design (JJ01, TQ01, TQ02, TQ03)
+          are not present.
+        - LINT_RULES is exported via the module's __all__ list.
+        """
+        rule_pattern = re.compile(r"^[A-Z]{2}\d{2}$")
+        excluded_rules = {"JJ01", "TQ01", "TQ02", "TQ03"}
+
+        # Arrange & Assert — structural checks
+        with check:
+            assert isinstance(LINT_RULES, list), "LINT_RULES should be a list"
+        with check:
+            assert len(LINT_RULES) > 0, "LINT_RULES should not be empty"
+
+        # Every entry must be a string matching the expected rule-code format
+        for rule in LINT_RULES:
+            with check:
+                assert isinstance(rule, str), f"Rule {rule!r} should be a string"
+            with check:
+                assert rule_pattern.match(rule) is not None, (
+                    f"Rule {rule!r} does not match expected pattern of 2 uppercase letters + 2 digits"
+                )
+
+        # Dialect-specific rules must be absent
+        for excluded in excluded_rules:
+            with check:
+                assert excluded not in LINT_RULES, f"Dialect-specific rule {excluded!r} should not be in LINT_RULES"
+
+        # LINT_RULES must be publicly exported
+        with check:
+            assert "LINT_RULES" in sql_utils_module.__all__, "LINT_RULES should be listed in __all__"

@@ -10,6 +10,7 @@ from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from typing import Final
 
+import sqlfluff
 import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer.scope import Scope, build_scope, find_all_in_scope
@@ -18,11 +19,12 @@ from dfkit.utils.exceptions import (
     ParseErrorDict,
     SQLBlacklistedCommandError,
     SQLColumnError,
+    SQLLintError,
     SQLSyntaxError,
     SQLTableError,
 )
 
-__all__ = ["DESTRUCTIVE_COMMANDS", "extract_table_names", "parse_sql", "validate_sql"]
+__all__ = ["DESTRUCTIVE_COMMANDS", "LINT_RULES", "extract_table_names", "lint_sql", "parse_sql", "validate_sql"]
 
 
 # region Constants
@@ -54,6 +56,88 @@ _EXPRESSION_TYPE_MAP: Final[dict[type[exp.Expr], str]] = {
     exp.Intersect: "SELECT",
     exp.Except: "SELECT",
 }
+
+# Explicit list of sqlfluff rule codes applied by lint_sql.
+# Pinning these codes ensures upstream changes to sqlfluff's default rule bundles
+# do not silently alter this library's linting behavior.
+# NOTE: # Dialect-specific rules are excluded: JJ01 (Jinja), TQ01/TQ02/TQ03 (T-SQL).
+LINT_RULES: Final[list[str]] = [
+    # Aliasing
+    "AL01",
+    "AL02",
+    "AL03",
+    "AL04",
+    "AL05",
+    "AL06",
+    "AL07",
+    "AL08",
+    "AL09",
+    # Ambiguity
+    "AM01",
+    "AM02",
+    "AM03",
+    "AM04",
+    "AM05",
+    "AM06",
+    "AM07",
+    "AM08",
+    "AM09",
+    # Capitalization
+    "CP01",
+    "CP02",
+    "CP03",
+    "CP04",
+    "CP05",
+    # Convention
+    "CV01",
+    "CV02",
+    "CV03",
+    "CV04",
+    "CV05",
+    "CV06",
+    "CV07",
+    "CV08",
+    "CV09",
+    "CV10",
+    "CV11",
+    "CV12",
+    # Layout
+    "LT01",
+    "LT02",
+    "LT03",
+    "LT04",
+    "LT05",
+    "LT06",
+    "LT07",
+    "LT08",
+    "LT09",
+    "LT10",
+    "LT11",
+    "LT12",
+    "LT13",
+    "LT14",
+    "LT15",
+    # References
+    "RF01",
+    "RF02",
+    "RF03",
+    "RF04",
+    "RF05",
+    "RF06",
+    # Structure
+    "ST01",
+    "ST02",
+    "ST03",
+    "ST04",
+    "ST05",
+    "ST06",
+    "ST07",
+    "ST08",
+    "ST09",
+    "ST10",
+    "ST11",
+    "ST12",
+]
 
 # endregion
 
@@ -185,6 +269,56 @@ def parse_sql(query: str, *, dialect: str | None = None, blacklist: Collection[s
             )
 
     return expression
+
+
+def lint_sql(query: str, *, dialect: str | None = None) -> str:
+    """Lint and auto-fix a SQL query, raising an error if violations remain.
+
+    Attempts to auto-fix the query using sqlfluff's `fix` function, then
+    lints the result. Both steps apply the explicit `LINT_RULES` rule set so
+    that upstream changes to sqlfluff's default bundles cannot silently alter
+    behaviour. If any violations remain after fixing, raises `SQLLintError`
+    with the full list of unfixable violations and the original query.
+
+    Args:
+        query (str): The SQL query string to lint and fix.
+        dialect (str | None): Optional SQL dialect to use. Defaults to `"ansi"`
+            when not provided.
+
+    Returns:
+        str: The auto-fixed SQL string if no violations remain.
+
+    Raises:
+        SQLLintError: If sqlfluff reports lint violations that could not be
+            automatically fixed. The exception's `violations` attribute
+            contains each violation dict with `code`, `line_no`,
+            `line_pos`, and `description`.
+
+    Examples:
+        Auto-fixable query:
+        >>> fixed = lint_sql("select id from users")
+        >>> fixed.strip().upper().startswith("SELECT")
+        True
+
+        Query with unfixable violations:
+        >>> try:
+        ...     lint_sql("SELECT * FROM t")  # wildcard may be flagged
+        ... except SQLLintError as e:
+        ...     print(type(e).__name__)
+        ...
+        SQLLintError
+    """
+    resolved_dialect = dialect or "ansi"
+    fixed_query: str = sqlfluff.fix(query, dialect=resolved_dialect, rules=LINT_RULES)
+    violations: list[dict[str, object]] = sqlfluff.lint(fixed_query, dialect=resolved_dialect, rules=LINT_RULES)
+    if violations:
+        count = len(violations)
+        raise SQLLintError(
+            message=f"{count} lint violation(s) could not be fixed automatically",
+            query=query,
+            violations=violations,
+        )
+    return fixed_query
 
 
 def validate_sql(
