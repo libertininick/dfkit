@@ -13,6 +13,7 @@ SQL validation exceptions (subclass Exception):
 - SQLTableError: Raised when SQL references non-existent tables.
 - SQLColumnError: Raised when SQL references non-existent columns.
 - SQLBlacklistedCommandError: Raised when SQL contains a blacklisted command type.
+- SQLLintError: Raised when SQL has unfixable lint violations after auto-fix.
 """
 
 from __future__ import annotations
@@ -440,3 +441,65 @@ class SQLBlacklistedCommandError(SQLValidationError):
             f"message={str(self)!r}, query={self.query!r}, "
             f"command_type={self.command_type!r}, blacklist={self.blacklist!r})"
         )
+
+
+class SQLLintError(SQLValidationError):
+    """Raised when a SQL query has unfixable lint violations after auto-fix.
+
+    This exception is raised when sqlfluff cannot automatically fix all lint
+    violations in the query. The `violations` attribute contains the list of
+    remaining violation dicts returned by sqlfluff, each describing a single
+    unfixable rule breach.
+
+    Attributes:
+        violations (list[dict[str, object]]): List of violation dicts from
+            sqlfluff. Each dict contains keys: `code`, `line_no`,
+            `line_pos`, and `description`.
+
+    Examples:
+        >>> err = SQLLintError(
+        ...     message="1 lint violation(s) could not be fixed",
+        ...     query="select * from t",
+        ...     violations=[
+        ...         {
+        ...             "code": "CP01",
+        ...             "line_no": 1,
+        ...             "line_pos": 1,
+        ...             "description": "Keywords must be consistently upper case.",
+        ...         }
+        ...     ],
+        ... )
+        >>> len(err.violations)
+        1
+        >>> err.violations[0]["code"]
+        'CP01'
+    """
+
+    violations: list[dict[str, object]]
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        query: str | None = None,
+        violations: list[dict[str, object]] | None = None,
+    ) -> None:
+        """Initialize SQLLintError.
+
+        Args:
+            message (str): Description of the lint error.
+            query (str | None): The original SQL query that failed linting.
+            violations (list[dict[str, object]] | None): List of unfixable violation
+                dicts from sqlfluff. Each dict contains `code`, `line_no`,
+                `line_pos`, and `description`. Defaults to an empty list.
+        """
+        super().__init__(message, query=query)
+        self.violations = violations or []
+
+    def __repr__(self) -> str:
+        """Return detailed representation for debugging.
+
+        Returns:
+            str: Detailed string representation including message, query, and violations.
+        """
+        return f"{self.__class__.__name__}(message={str(self)!r}, query={self.query!r}, violations={self.violations!r})"
