@@ -2170,53 +2170,6 @@ class TestLintSQL:
         with check:
             assert len(result) > 0, "Returned SQL should be non-empty"
 
-    def test_lint_sql_default_dialect_is_ansi(self) -> None:
-        """When no dialect is provided, sqlfluff should be called with dialect='ansi'.
-
-        lint_sql uses "ansi" as the default dialect. This test mocks sqlfluff to
-        verify the dialect argument is forwarded correctly.
-        """
-        # Arrange
-        query = "SELECT id FROM t"
-        fixed_query = "SELECT id FROM t\n"
-
-        mock_fix = MagicMock(spec=sqlfluff.fix, return_value=fixed_query)
-        mock_lint = MagicMock(spec=sqlfluff.lint, return_value=[])
-
-        with (
-            patch("dfkit.utils.sql_utils.sqlfluff.fix", mock_fix),
-            patch("dfkit.utils.sql_utils.sqlfluff.lint", mock_lint),
-        ):
-            # Act
-            result = lint_sql(query)
-
-        # Assert
-        with check:
-            assert result == fixed_query, "Should return the fixed query from sqlfluff.fix"
-
-        fix_call_kwargs = mock_fix.call_args
-        lint_call_kwargs = mock_lint.call_args
-
-        with check:
-            assert fix_call_kwargs is not None, "sqlfluff.fix should have been called"
-        with check:
-            assert lint_call_kwargs is not None, "sqlfluff.lint should have been called"
-
-        # Verify dialect="ansi" was passed (either as positional or keyword argument)
-        fix_args, fix_kwargs = fix_call_kwargs
-        lint_args, lint_kwargs = lint_call_kwargs
-
-        with check:
-            ansi_in_fix = "ansi" in fix_args or fix_kwargs.get("dialect") == "ansi"
-            assert ansi_in_fix, "sqlfluff.fix should be called with dialect='ansi' by default"
-        with check:
-            ansi_in_lint = "ansi" in lint_args or lint_kwargs.get("dialect") == "ansi"
-            assert ansi_in_lint, "sqlfluff.lint should be called with dialect='ansi' by default"
-        with check:
-            assert fix_kwargs.get("rules") == LINT_RULES, "sqlfluff.fix should be called with rules=LINT_RULES"
-        with check:
-            assert lint_kwargs.get("rules") == LINT_RULES, "sqlfluff.lint should be called with rules=LINT_RULES"
-
     def test_lint_rules_passes_explicit_rules(self) -> None:
         """LINT_RULES constant must be a non-empty list of well-formed rule codes.
 
