@@ -109,7 +109,7 @@ cd dfkit
 uv sync
 
 # Set up pre-commit hooks
-uv run pre-commit install
+uv run prek install
 ```
 
 ### Updating dependencies
@@ -140,8 +140,8 @@ uv self update \
 ### Update pre-commit hooks:
 
 ```sh
-uv run pre-commit install-hooks \
-&& uv run pre-commit autoupdate
+uv run prek install-hooks \
+&& uv run prek autoupdate
 ```
 
 ### Run checks
