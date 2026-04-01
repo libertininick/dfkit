@@ -400,7 +400,7 @@ class TestSQLLintError:
         """
         query = "select * from t"
         violations: list[dict[str, object]] = [
-            {"code": "CP01", "line_no": 1, "line_pos": 1, "description": "Keywords must be upper case."}
+            {"code": "LT02", "line_no": 1, "line_pos": 7, "description": "Expected single space before star."}
         ]
         error = SQLLintError("1 lint violation(s) could not be fixed", query=query, violations=violations)
 
