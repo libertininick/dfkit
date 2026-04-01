@@ -40,6 +40,7 @@ def toolkit_with_data() -> DataFrameToolkit:
     toolkit.register_dataframe("customers", df)
     return toolkit
 
+
 # endregion
 
 
@@ -623,6 +624,7 @@ class TestDecisionTreeModule:
         with check:
             assert result.depth <= max_depth
 
+
 # endregion
 
 
@@ -672,5 +674,6 @@ class TestDecisionTreeModuleIntegration:
 
         # Assert
         assert "analyze_with_decision_tree" not in tool_names
+
 
 # endregion

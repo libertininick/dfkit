@@ -109,7 +109,7 @@ cd dfkit
 uv sync
 
 # Set up pre-commit hooks
-uv run pre-commit install
+uv run prek install
 ```
 
 ### Updating dependencies
@@ -137,11 +137,11 @@ uv self update \
 && uv cache prune
 ```
 
-### Update pre-commit hooks:
+### Update pre-commit hooks
 
 ```sh
-uv run pre-commit install-hooks \
-&& uv run pre-commit autoupdate
+uv run prek install-hooks \
+&& uv run prek autoupdate
 ```
 
 ### Run checks
@@ -153,4 +153,15 @@ uv run ruff check . \
 && uv run pytest --cov src/ .
 ```
 
+### Run pre-commit hooks
+
+Files with changes
+```sh
+uv run prek run
+```
+
+All files
+```sh
+uv run prek run --all-files
+```
 ---

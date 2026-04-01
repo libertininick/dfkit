@@ -84,6 +84,7 @@ class FeatureEncoder:
     column_type: ColumnType
     category_mapping: dict[int, str] | None = field(default=None)
 
+
 # endregion
 
 
@@ -151,6 +152,7 @@ def filter_features(
 
     return kept, excluded
 
+
 # endregion
 
 
@@ -186,6 +188,7 @@ def infer_task(
         return "classification"
 
     return "regression"
+
 
 # endregion
 
@@ -270,6 +273,7 @@ def encode_target(
     encoded_array = label_encoder.fit_transform(raw_array).astype(np.float64)
     category_mapping = _make_category_mapping(label_encoder.classes_)
     return encoded_array, category_mapping
+
 
 # endregion
 

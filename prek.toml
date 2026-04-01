@@ -1,0 +1,35 @@
+# Ruff pre-commit hooks
+[[repos]]
+repo = "https://github.com/astral-sh/ruff-pre-commit"
+rev = "v0.15.8"
+hooks = [
+  { id = "ruff-check", types_or = ["python", "pyi", "jupyter"], args = ["--fix"] },
+  { id = "ruff-format", types_or = ["python", "pyi", "jupyter"] },
+]
+
+# pydoclint hooks
+[[repos]]
+repo = "https://github.com/jsh9/pydoclint"
+rev = "0.8.3"
+hooks = [
+  { id = "pydoclint", args = ["--style=google", "--allow-init-docstring=True"] },
+]
+
+# nbstripout hook for stripping notebook outputs
+[[repos]]
+repo = "https://github.com/kynan/nbstripout"
+rev = "0.9.1"
+hooks = [
+  { id = "nbstripout" },
+]
+
+# ty type checker hook
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "ty"
+name = "ty check"
+entry = "uv run ty check ."
+language = "system"
+types = ["python"]

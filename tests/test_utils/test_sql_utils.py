@@ -337,9 +337,7 @@ class TestParseSQLComplexQueries:
         result = parse_sql(query)
 
         with check:
-            assert isinstance(result, exp.Expr), (
-                "parse_sql should return Expression for valid window functions"
-            )
+            assert isinstance(result, exp.Expr), "parse_sql should return Expression for valid window functions"
 
 
 class TestParseSQLEmptyQueries:
@@ -2015,5 +2013,6 @@ class TestValidateSQLEdgeCases:
     def test_validate_sql_star_select_succeeds(self) -> None:
         """SELECT * should not raise errors."""
         validate_sql("SELECT * FROM users", {"users": {"id", "name", "email"}})
+
 
 # endregion

@@ -100,15 +100,14 @@ class _ColumnErrors:
         """Return True if any column errors were detected."""
         return bool(self.invalid_columns or self.ambiguous_columns or self.not_found_columns)
 
+
 # endregion
 
 
 # region Public Interface
 
 
-def parse_sql(
-    query: str, *, dialect: str | None = None, blacklist: Collection[str] | None = None
-) -> exp.Expr:
+def parse_sql(query: str, *, dialect: str | None = None, blacklist: Collection[str] | None = None) -> exp.Expr:
     """Parses the query using SQLglot to detect syntax errors and returns the parsed expression.
 
     If the query is syntactically valid, returns normally. If the query has syntax
@@ -314,6 +313,7 @@ def extract_table_names(expression: exp.Expr) -> list[str]:
     ]
 
     return [table.name.lower() for table in tables]
+
 
 # endregion
 
