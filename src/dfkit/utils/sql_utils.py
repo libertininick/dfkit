@@ -12,6 +12,7 @@ from typing import Final
 
 import sqlfluff
 import sqlglot
+from sqlfluff.core.errors import SQLBaseError
 from sqlglot import exp
 from sqlglot.optimizer.scope import Scope, build_scope, find_all_in_scope
 
@@ -292,7 +293,10 @@ def lint_sql(query: str, *, dialect: str | None = None) -> str:
         SQLLintError: If sqlfluff reports lint violations that could not be
             automatically fixed. The exception's `violations` attribute
             contains each violation dict with `code`, `line_no`,
-            `line_pos`, and `description`.
+            `line_pos`, and `description`. Also raised when sqlfluff itself
+            raises an internal error (e.g. invalid dialect, severe parse
+            failure); in that case `violations` is empty and the original
+            exception is chained via `__cause__`.
 
     Examples:
         Auto-fixable query:
@@ -309,8 +313,15 @@ def lint_sql(query: str, *, dialect: str | None = None) -> str:
         SQLLintError
     """
     resolved_dialect = dialect or "ansi"
-    fixed_query: str = sqlfluff.fix(query, dialect=resolved_dialect, rules=LINT_RULES)
-    violations: list[dict[str, object]] = sqlfluff.lint(fixed_query, dialect=resolved_dialect, rules=LINT_RULES)
+    try:
+        fixed_query: str = sqlfluff.fix(query, dialect=resolved_dialect, rules=LINT_RULES)
+        violations: list[dict[str, object]] = sqlfluff.lint(fixed_query, dialect=resolved_dialect, rules=LINT_RULES)
+    except SQLBaseError as exc:
+        raise SQLLintError(
+            message=f"sqlfluff raised an internal error: {exc}",
+            query=query,
+            violations=[],
+        ) from exc
     if violations:
         count = len(violations)
         raise SQLLintError(
