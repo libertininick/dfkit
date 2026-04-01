@@ -2047,12 +2047,7 @@ class TestLintSQL:
         result = lint_sql(query)
 
         # Assert
-        with check:
-            assert "SELECT" in result, "Returned SQL should contain SELECT keyword"
-        with check:
-            assert "id" in result, "Returned SQL should contain column name"
-        with check:
-            assert "FROM" in result, "Returned SQL should contain FROM keyword"
+        assert result.strip() == "SELECT id FROM t"
 
     def test_lint_sql_fixes_keyword_casing(self) -> None:
         """A query with lowercase keywords should pass through lint_sql without error.
