@@ -137,7 +137,7 @@ uv self update \
 && uv cache prune
 ```
 
-### Update pre-commit hooks:
+### Update pre-commit hooks
 
 ```sh
 uv run prek install-hooks \
@@ -153,4 +153,15 @@ uv run ruff check . \
 && uv run pytest --cov src/ .
 ```
 
+### Run pre-commit hooks
+
+Files with changes
+```sh
+uv run prek run
+```
+
+All files
+```sh
+uv run prek run --all-files
+```
 ---
