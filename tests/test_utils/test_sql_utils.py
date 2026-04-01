@@ -2170,7 +2170,7 @@ class TestLintSQL:
         with check:
             assert len(result) > 0, "Returned SQL should be non-empty"
 
-    def test_lint_rules_passes_explicit_rules(self) -> None:
+    def test_lint_rules_constant_structure_and_format(self) -> None:
         """LINT_RULES constant must be a non-empty list of well-formed rule codes.
 
         Verifies structural and content constraints on LINT_RULES:
