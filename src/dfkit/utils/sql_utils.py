@@ -293,10 +293,12 @@ def lint_sql(query: str, *, dialect: str | None = None) -> str:
         SQLLintError: If sqlfluff reports lint violations that could not be
             automatically fixed. The exception's `violations` attribute
             contains each violation dict with `code`, `line_no`,
-            `line_pos`, and `description`. Also raised when sqlfluff itself
+            `line_pos`, and `description`. The `fixed_query` attribute holds
+            the partially auto-fixed SQL; violation positions reference that
+            string, not the original `query`. Also raised when sqlfluff itself
             raises an internal error (e.g. invalid dialect, severe parse
-            failure); in that case `violations` is empty and the original
-            exception is chained via `__cause__`.
+            failure); in that case `violations` is empty, `fixed_query` is
+            `None`, and the original exception is chained via `__cause__`.
 
     Examples:
         Auto-fixable query:
@@ -323,10 +325,10 @@ def lint_sql(query: str, *, dialect: str | None = None) -> str:
             violations=[],
         ) from exc
     if violations:
-        count = len(violations)
         raise SQLLintError(
-            message=f"{count} lint violation(s) could not be fixed automatically",
+            message=f"{len(violations)} lint violation(s) could not be fixed automatically",
             query=query,
+            fixed_query=fixed_query,
             violations=violations,
         )
     return fixed_query

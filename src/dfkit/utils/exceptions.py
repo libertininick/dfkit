@@ -451,15 +451,26 @@ class SQLLintError(SQLValidationError):
     remaining violation dicts returned by sqlfluff, each describing a single
     unfixable rule breach.
 
+    The `query` attribute holds the original input SQL. The `fixed_query`
+    attribute holds the partially auto-fixed SQL that sqlfluff produced before
+    giving up; violation `line_no`/`line_pos` values reference positions in
+    `fixed_query`, not in `query`.
+
     Attributes:
         violations (list[dict[str, object]]): List of violation dicts from
             sqlfluff. Each dict contains keys: `code`, `line_no`,
-            `line_pos`, and `description`.
+            `line_pos`, and `description`. Positions reference `fixed_query`.
+        fixed_query (str | None): The auto-fixed SQL string produced by
+            sqlfluff before any remaining violations were detected. Violation
+            positions correspond to this string. `None` when the exception
+            was raised due to an internal sqlfluff error rather than unfixable
+            violations.
 
     Examples:
         >>> err = SQLLintError(
         ...     message="1 lint violation(s) could not be fixed",
         ...     query="select * from t",
+        ...     fixed_query="SELECT * FROM t",
         ...     violations=[
         ...         {
         ...             "code": "CP01",
@@ -473,33 +484,46 @@ class SQLLintError(SQLValidationError):
         1
         >>> err.violations[0]["code"]
         'CP01'
+        >>> err.fixed_query
+        'SELECT * FROM t'
     """
 
     violations: list[dict[str, object]]
+    fixed_query: str | None
 
     def __init__(
         self,
         message: str,
         *,
         query: str | None = None,
+        fixed_query: str | None = None,
         violations: list[dict[str, object]] | None = None,
     ) -> None:
         """Initialize SQLLintError.
 
         Args:
             message (str): Description of the lint error.
-            query (str | None): The original SQL query that failed linting.
+            query (str | None): The original SQL query that was passed to the linter.
+            fixed_query (str | None): The auto-fixed SQL string produced by sqlfluff.
+                Violation `line_no`/`line_pos` values reference positions in this
+                string, not in `query`. Pass `None` when no fixed version is available
+                (e.g. when the error stems from an internal sqlfluff failure).
             violations (list[dict[str, object]] | None): List of unfixable violation
                 dicts from sqlfluff. Each dict contains `code`, `line_no`,
                 `line_pos`, and `description`. Defaults to an empty list.
         """
         super().__init__(message, query=query)
+        self.fixed_query = fixed_query
         self.violations = violations or []
 
     def __repr__(self) -> str:
         """Return detailed representation for debugging.
 
         Returns:
-            str: Detailed string representation including message, query, and violations.
+            str: Detailed string representation including message, query, fixed_query, and violations.
         """
-        return f"{self.__class__.__name__}(message={str(self)!r}, query={self.query!r}, violations={self.violations!r})"
+        return (
+            f"{self.__class__.__name__}("
+            f"message={str(self)!r}, query={self.query!r}, "
+            f"fixed_query={self.fixed_query!r}, violations={self.violations!r})"
+        )

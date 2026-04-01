@@ -448,18 +448,57 @@ class TestSQLLintError:
         with check:
             assert error.violations == [], "Violations should default to empty list when not provided"
 
-    def test_sql_lint_error_repr(self) -> None:
-        """Verify SQLLintError repr includes class name, message, query, and violations.
+    def test_sql_lint_error_stores_fixed_query_when_provided(self) -> None:
+        """Verify SQLLintError stores fixed_query when explicitly passed.
 
-        The repr should include all key attributes for debugging purposes.
+        When the caller provides a fixed_query, it should be accessible via
+        the fixed_query attribute so callers can inspect the auto-fixed SQL
+        alongside the unfixable violations.
+        """
+        original_query = "select id from users"
+        fixed_query = "SELECT id FROM users\n"
+        violations: list[dict[str, object]] = [
+            {"code": "AM04", "line_no": 1, "line_pos": 1, "description": "Wildcard not allowed."}
+        ]
+
+        error = SQLLintError(
+            "1 lint violation(s) could not be fixed",
+            query=original_query,
+            fixed_query=fixed_query,
+            violations=violations,
+        )
+
+        with check:
+            assert error.fixed_query == fixed_query, "fixed_query should be stored and retrievable"
+        with check:
+            assert error.query == original_query, "original query attribute should remain unchanged"
+
+    def test_sql_lint_error_fixed_query_defaults_to_none(self) -> None:
+        """Verify SQLLintError defaults fixed_query to None when not provided.
+
+        When no fixed_query is supplied (e.g., when raised from the SQLBaseError
+        catch branch), fixed_query should default to None rather than raising an
+        AttributeError or storing a misleading empty string.
+        """
+        error = SQLLintError("Lint error", query="SELECT 1")
+
+        with check:
+            assert error.fixed_query is None, "fixed_query should default to None when not provided"
+
+    def test_sql_lint_error_repr(self) -> None:
+        """Verify SQLLintError repr includes class name, message, query, violations, and fixed_query.
+
+        The repr should include all key attributes for debugging purposes,
+        including the new fixed_query attribute.
         """
         query = "select * from t"
+        fixed_query = "SELECT *\nFROM t\n"
         violations: list[dict[str, object]] = [
             {"code": "CP01", "line_no": 1, "line_pos": 1, "description": "Keywords must be upper case."}
         ]
         message = "1 lint violation(s) could not be fixed"
 
-        error = SQLLintError(message, query=query, violations=violations)
+        error = SQLLintError(message, query=query, fixed_query=fixed_query, violations=violations)
         repr_str = repr(error)
 
         with check:
@@ -470,6 +509,8 @@ class TestSQLLintError:
             assert query in repr_str, "Repr should include query"
         with check:
             assert "violations=" in repr_str, "Repr should include violations key"
+        with check:
+            assert "fixed_query=" in repr_str, "Repr should include fixed_query key"
 
     def test_sql_lint_error_stores_query(self) -> None:
         """Verify SQLLintError preserves the query attribute via SQLValidationError.

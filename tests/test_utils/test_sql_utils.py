@@ -16,6 +16,7 @@ import pytest
 import sqlfluff
 import sqlglot
 from pytest_check import check
+from sqlfluff.core.errors import SQLParseError
 from sqlglot import exp
 
 import dfkit.utils.sql_utils as sql_utils_module
@@ -2095,14 +2096,15 @@ class TestLintSQL:
         """Remaining violations after fix pass should raise SQLLintError.
 
         When sqlfluff.lint returns a non-empty violations list after the fix
-        pass, lint_sql must raise SQLLintError with that violations list
-        and the original query.
+        pass, lint_sql must raise SQLLintError carrying the original query,
+        the auto-fixed query (as fixed_query), and the unfixable violations.
         """
         # Arrange
         original_query = "SELECT id FROM t"
+        auto_fixed_query = "SELECT id FROM t\n"
         fake_violations = [{"code": "CP01", "line_no": 1, "line_pos": 1, "description": "Keywords must be upper case."}]
 
-        mock_fix = MagicMock(spec=sqlfluff.fix, return_value=original_query)
+        mock_fix = MagicMock(spec=sqlfluff.fix, return_value=auto_fixed_query)
         mock_lint = MagicMock(spec=sqlfluff.lint, return_value=fake_violations)
 
         with (
@@ -2120,6 +2122,32 @@ class TestLintSQL:
             assert error.query == original_query, "Exception should carry the original query"
         with check:
             assert len(error.violations) == 1, "One violation should be present"
+        with check:
+            assert error.fixed_query == auto_fixed_query, "Exception should carry the auto-fixed query"
+
+    def test_lint_sql_internal_error_sets_fixed_query_to_none(self) -> None:
+        """SQLLintError raised from an internal sqlfluff error should have fixed_query=None.
+
+        When sqlfluff.fix raises SQLBaseError, lint_sql re-raises it as
+        SQLLintError without a fixed_query because the fix pass never completed.
+        The fixed_query attribute must be None in this case.
+        """
+        # Arrange — mock sqlfluff.fix to raise SQLBaseError (an external boundary)
+        query = "SELECT id FROM users"
+        mock_fix = MagicMock(spec=sqlfluff.fix, side_effect=SQLParseError("parse failure"))
+
+        with (
+            patch("dfkit.utils.sql_utils.sqlfluff.fix", mock_fix),
+            pytest.raises(SQLLintError) as exc_info,
+        ):
+            # Act
+            lint_sql(query)
+
+        error = exc_info.value
+        with check:
+            assert error.fixed_query is None, "fixed_query should be None when raised from SQLBaseError branch"
+        with check:
+            assert error.query == query, "original query should still be stored"
 
     def test_lint_sql_preserves_query_semantics(self) -> None:
         """Linting a valid query should preserve its semantics.
