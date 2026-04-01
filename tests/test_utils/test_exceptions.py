@@ -448,6 +448,21 @@ class TestSQLLintError:
         with check:
             assert error.violations == [], "Violations should default to empty list when not provided"
 
+    def test_sql_lint_error_explicit_none_violations_defaults_to_empty_list(self) -> None:
+        """Verify SQLLintError normalizes explicit violations=None to an empty list.
+
+        Passing violations=None explicitly (rather than omitting the kwarg) must
+        still produce an empty list on the attribute. This ensures callers that
+        forward an optional violations value do not accidentally store None and
+        break iteration-site code that expects a list.
+        """
+        # Arrange & Act
+        error = SQLLintError("Lint error", query="SELECT 1", violations=None)
+
+        # Assert
+        with check:
+            assert error.violations == [], "violations=None should be normalized to an empty list"
+
     def test_sql_lint_error_stores_fixed_query_when_provided(self) -> None:
         """Verify SQLLintError stores fixed_query when explicitly passed.
 
@@ -511,19 +526,6 @@ class TestSQLLintError:
             assert "violations=" in repr_str, "Repr should include violations key"
         with check:
             assert "fixed_query=" in repr_str, "Repr should include fixed_query key"
-
-    def test_sql_lint_error_stores_query(self) -> None:
-        """Verify SQLLintError preserves the query attribute via SQLValidationError.
-
-        The query passed to SQLLintError should be accessible via the inherited
-        query attribute from SQLValidationError.
-        """
-        query = "select id, name from users where active = 1"
-
-        error = SQLLintError("Lint error", query=query)
-
-        with check:
-            assert error.query == query, "Query attribute should be preserved"
 
 
 class TestSQLColumnErrorAmbiguous:

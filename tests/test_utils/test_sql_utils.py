@@ -2227,3 +2227,37 @@ class TestLintSQL:
         # LINT_RULES must be publicly exported
         with check:
             assert "LINT_RULES" in sql_utils_module.__all__, "LINT_RULES should be listed in __all__"
+
+    def test_lint_sql_empty_string_input(self) -> None:
+        """Empty string input should return empty string."""
+        assert lint_sql("") == ""  # noqa: PLC1901
+
+    def test_lint_sql_multiline_join_query(self) -> None:
+        """A multiline JOIN query should be linted and returned as a non-empty string.
+
+        Verifies that lint_sql handles a realistic multi-line query with a JOIN
+        without raising an error, and that the returned SQL preserves the key
+        tokens SELECT, JOIN, and WHERE from the original query.
+        """
+        # Arrange
+        query = (
+            "SELECT u.id, u.name, o.total\n"
+            "FROM users AS u\n"
+            "INNER JOIN orders AS o ON u.id = o.user_id\n"
+            "WHERE o.total > 100\n"
+        )
+
+        # Act
+        result = lint_sql(query)
+
+        # Assert — result is a non-empty string containing key SQL tokens
+        with check:
+            assert isinstance(result, str), "lint_sql should return a string"
+        with check:
+            assert len(result) > 0, "Result should be non-empty"
+        with check:
+            assert "SELECT" in result.upper(), "Result should contain SELECT"
+        with check:
+            assert "JOIN" in result.upper(), "Result should contain JOIN"
+        with check:
+            assert "WHERE" in result.upper(), "Result should contain WHERE"
