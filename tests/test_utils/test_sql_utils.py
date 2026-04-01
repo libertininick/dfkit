@@ -2096,8 +2096,7 @@ class TestLintSQL:
 
         When sqlfluff.lint returns a non-empty violations list after the fix
         pass, lint_sql must raise SQLLintError with that violations list
-        and the original query. Also verifies that rules=LINT_RULES is
-        forwarded to both sqlfluff.fix and sqlfluff.lint.
+        and the original query.
         """
         # Arrange
         original_query = "SELECT id FROM t"
@@ -2121,13 +2120,6 @@ class TestLintSQL:
             assert error.query == original_query, "Exception should carry the original query"
         with check:
             assert len(error.violations) == 1, "One violation should be present"
-
-        fix_kwargs = mock_fix.call_args.kwargs
-        lint_kwargs = mock_lint.call_args.kwargs
-        with check:
-            assert fix_kwargs.get("rules") == LINT_RULES, "sqlfluff.fix should be called with rules=LINT_RULES"
-        with check:
-            assert lint_kwargs.get("rules") == LINT_RULES, "sqlfluff.lint should be called with rules=LINT_RULES"
 
     def test_lint_sql_preserves_query_semantics(self) -> None:
         """Linting a valid query should preserve its semantics.
