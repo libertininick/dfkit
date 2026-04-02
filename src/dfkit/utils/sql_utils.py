@@ -526,27 +526,39 @@ def _validate_column_references(
 
     for scope in root.traverse():
         alias_to_table = _build_alias_to_table_map(scope)
+        select_aliases: set[str] = set()
+        if isinstance(scope.expression, exp.Query):
+            select_aliases = {s.alias_or_name.lower() for s in scope.expression.selects if s.alias}
         for column in find_all_in_scope(scope.expression, exp.Column):
-            yield _validate_column_in_scope(column, alias_to_table, normalized_schema)
+            yield _validate_column_in_scope(column, alias_to_table, normalized_schema, select_aliases)
 
 
 def _validate_column_in_scope(
     column: exp.Column,
     alias_to_table: dict[str, str],
     normalized_schema: dict[str, set[str]],
+    select_aliases: set[str],
 ) -> _ColumnValidationResult:
     """Validate a single column reference against the schema.
+
+    Unqualified columns that match a SELECT alias (e.g., `ORDER BY alias`) are
+    skipped so that alias references do not produce false-positive errors.
 
     Args:
         column (exp.Column): The column expression to validate.
         alias_to_table (dict[str, str]): Mapping from alias to base table name.
         normalized_schema (dict[str, set[str]]): Lowercase schema mapping table names to column sets.
+        select_aliases (set[str]): Lowercase aliases defined in the SELECT clause of the current scope.
 
     Returns:
         _ColumnValidationResult: Result indicating if the column is invalid or ambiguous.
     """
     col_name = column.name.lower()
     table_alias = column.table.lower() if column.table else ""
+
+    # Skip validation for unqualified columns that reference SELECT aliases
+    if not table_alias and col_name in select_aliases:
+        return _ColumnValidationResult(col_name)
 
     if table_alias:
         return _check_qualified_column(col_name, table_alias, alias_to_table, normalized_schema)

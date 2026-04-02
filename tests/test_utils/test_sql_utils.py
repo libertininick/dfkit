@@ -1695,6 +1695,25 @@ class TestValidateSQLSuccessCases:
         """Valid query with ORDER BY using valid columns should not raise."""
         validate_sql("SELECT id, name FROM users ORDER BY name", {"users": {"id", "name", "email"}})
 
+    def test_validate_sql_with_order_by_select_alias_succeeds(self) -> None:
+        """ORDER BY referencing a SELECT alias should not raise."""
+        # Arrange
+        query = """
+            SELECT
+                ROUND(bmi, 1) AS bmi_rounded,
+                COUNT(*) AS patient_count,
+                ROUND(AVG(disease_progression), 2) AS avg_disease_progression
+            FROM df_e94d4ec0
+            GROUP BY ROUND(bmi, 1)
+            ORDER BY bmi_rounded
+        """
+        table_columns = {
+            "df_e94d4ec0": {"age", "bmi", "bp", "disease_progression", "s1", "s2", "s3", "s4", "s5", "s6", "sex"},
+        }
+
+        # Act / Assert — no exception should be raised
+        validate_sql(query, table_columns)
+
     def test_validate_sql_with_aggregate_succeeds(self) -> None:
         """Valid query with aggregate functions should not raise."""
         validate_sql("SELECT COUNT(id) FROM users", {"users": {"id", "name", "email"}})
