@@ -1,7 +1,4 @@
-"""SQL utilities for parsing and validating SQL queries.
-
-This module provides functions for validating SQL syntax using SQLglot.
-"""
+"""SQL utilities for linting, parsing, and validating SQL queries."""
 
 from __future__ import annotations
 
@@ -12,7 +9,6 @@ from typing import Final
 
 import sqlfluff
 import sqlglot
-from sqlfluff.core.errors import SQLBaseError
 from sqlglot import exp
 from sqlglot.optimizer.scope import Scope, build_scope, find_all_in_scope
 
@@ -20,12 +16,11 @@ from dfkit.utils.exceptions import (
     ParseErrorDict,
     SQLBlacklistedCommandError,
     SQLColumnError,
-    SQLLintError,
     SQLSyntaxError,
     SQLTableError,
 )
 
-__all__ = ["DESTRUCTIVE_COMMANDS", "LINT_RULES", "extract_table_names", "lint_sql", "parse_sql", "validate_sql"]
+__all__ = ["DESTRUCTIVE_COMMANDS", "LINT_RULES", "extract_table_names", "parse_sql", "validate_sql"]
 
 
 # region Constants
@@ -42,47 +37,10 @@ DESTRUCTIVE_COMMANDS: Final[frozenset[str]] = frozenset({
     "CREATE",
 })
 
-# Mapping of sqlglot expression types to SQL command type strings for blacklist checking.
-# Set operations (Union, Intersect, Except) are considered SELECT queries.
-_EXPRESSION_TYPE_MAP: Final[dict[type[exp.Expr], str]] = {
-    exp.Select: "SELECT",
-    exp.Delete: "DELETE",
-    exp.Insert: "INSERT",
-    exp.Update: "UPDATE",
-    exp.Drop: "DROP",
-    exp.Create: "CREATE",
-    exp.TruncateTable: "TRUNCATE",
-    exp.Alter: "ALTER",
-    exp.Union: "SELECT",
-    exp.Intersect: "SELECT",
-    exp.Except: "SELECT",
-}
-
-# Explicit list of sqlfluff rule codes applied by lint_sql.
-# Pinning these codes ensures upstream changes to sqlfluff's default rule bundles
-# do not silently alter this library's linting behavior.
-# NOTE: Dialect-specific rules are excluded: JJ01 (Jinja), TQ01/TQ02/TQ03 (T-SQL).
-LINT_RULES: Final[list[str]] = [
+# Auto-fixable, dialect-generic rules only. Semantic checks are handled by sqlglot.
+LINT_RULES: Final[frozenset[str]] = frozenset({
     # Aliasing
-    "AL01",
-    "AL02",
-    "AL03",
-    "AL04",
     "AL05",
-    "AL06",
-    "AL07",
-    "AL08",
-    "AL09",
-    # Ambiguity
-    "AM01",
-    "AM02",
-    "AM03",
-    "AM04",
-    "AM05",
-    "AM06",
-    "AM07",
-    "AM08",
-    "AM09",
     # Capitalization
     "CP01",
     "CP02",
@@ -97,8 +55,6 @@ LINT_RULES: Final[list[str]] = [
     "CV05",
     "CV06",
     "CV07",
-    "CV08",
-    "CV09",
     "CV10",
     "CV11",
     "CV12",
@@ -118,34 +74,41 @@ LINT_RULES: Final[list[str]] = [
     "LT13",
     "LT14",
     "LT15",
-    # References
-    "RF01",
-    "RF02",
-    "RF03",
-    "RF04",
-    "RF05",
-    "RF06",
     # Structure
-    "ST01",
     "ST02",
-    "ST03",
     "ST04",
     "ST05",
     "ST06",
     "ST07",
     "ST08",
     "ST09",
-    "ST10",
-    "ST11",
     "ST12",
-]
+})
+
+# ALL supported lint rules by SQLFluff
+_SUPPORTED_RULES: Final[frozenset[str]] = frozenset({r.code for r in sqlfluff.list_rules()})
+
+# Mapping of sqlglot expression types to SQL command type strings for blacklist checking.
+# Set operations (Union, Intersect, Except) are considered SELECT queries.
+_EXPRESSION_TYPE_MAP: Final[dict[type[exp.Expr], str]] = {
+    exp.Select: "SELECT",
+    exp.Delete: "DELETE",
+    exp.Insert: "INSERT",
+    exp.Update: "UPDATE",
+    exp.Drop: "DROP",
+    exp.Create: "CREATE",
+    exp.TruncateTable: "TRUNCATE",
+    exp.Alter: "ALTER",
+    exp.Union: "SELECT",
+    exp.Intersect: "SELECT",
+    exp.Except: "SELECT",
+}
+
 
 # endregion
 
 
 # region Public Interface
-
-
 def parse_sql(query: str, *, dialect: str | None = None, blacklist: Collection[str] | None = None) -> exp.Expr:
     """Parses the query using SQLglot to detect syntax errors and returns the parsed expression.
 
@@ -226,84 +189,19 @@ def parse_sql(query: str, *, dialect: str | None = None, blacklist: Collection[s
     return expression
 
 
-def lint_sql(query: str, *, dialect: str | None = None) -> str:
-    """Lint and auto-fix a SQL query, raising an error if violations remain.
-
-    Attempts to auto-fix the query using sqlfluff's `fix` function, then
-    lints the result. Both steps apply the explicit `LINT_RULES` rule set so
-    that upstream changes to sqlfluff's default bundles cannot silently alter
-    behaviour. If any violations remain after fixing, raises `SQLLintError`
-    with the full list of unfixable violations and the original query.
-
-    Args:
-        query (str): The SQL query string to lint and fix.
-        dialect (str | None): Optional SQL dialect to use. Defaults to `"ansi"`
-            when not provided.
-
-    Returns:
-        str: The auto-fixed SQL string if no violations remain.
-
-    Raises:
-        SQLLintError: If sqlfluff reports lint violations that could not be
-            automatically fixed. The exception's `violations` attribute
-            contains each violation dict with `code`, `line_no`,
-            `line_pos`, and `description`. The `fixed_query` attribute holds
-            the partially auto-fixed SQL; violation positions reference that
-            string, not the original `query`. Also raised when sqlfluff itself
-            raises an internal error (e.g. invalid dialect, severe parse
-            failure); in that case `violations` is empty, `fixed_query` is
-            `None`, and the original exception is chained via `__cause__`.
-
-    Examples:
-        Auto-fixable query:
-        >>> fixed = lint_sql("select id from users")
-        >>> fixed.strip().upper().startswith("SELECT")
-        True
-
-        Query with unfixable violations:
-        >>> try:
-        ...     lint_sql("SELECT * FROM t")  # wildcard may be flagged
-        ... except SQLLintError as e:
-        ...     print(type(e).__name__)
-        ...
-        SQLLintError
-    """
-    resolved_dialect = dialect or "ansi"
-    try:
-        fixed_query: str = sqlfluff.fix(query, dialect=resolved_dialect, rules=LINT_RULES)
-        violations: list[dict[str, object]] = sqlfluff.lint(fixed_query, dialect=resolved_dialect, rules=LINT_RULES)
-    except SQLBaseError as exc:
-        raise SQLLintError(
-            message=f"sqlfluff raised an internal error: {exc}",
-            query=query,
-            violations=[],
-        ) from exc
-    if violations:
-        raise SQLLintError(
-            message=f"{len(violations)} lint violation(s) could not be fixed automatically",
-            query=query,
-            fixed_query=fixed_query,
-            violations=violations,
-        )
-    return fixed_query
-
-
 def validate_sql(
     query: str,
     table_columns: dict[str, set[str]],
     *,
     dialect: str | None = None,
     blacklist: Collection[str] | None = None,
+    lint_rules: Collection[str] | None = None,
 ) -> exp.Expr:
     """Validate a SQL query through comprehensive multi-step validation.
 
-    Orchestrates full SQL validation by running parsing, table validation,
-    and column validation in sequence. This provides a single entry point
-    for complete SQL validation in the DataFrame toolkit.
-
     The validation steps are:
-    1. Lint and auto-fix the query using `lint_sql()`
-    2. Parse the linted query using `parse_sql()` with optional blacklist
+    1. Best-effort style fix via `sqlfluff.fix()` (failures are silently ignored)
+    2. Parse the query using `parse_sql()` with optional blacklist
     3. Validate table references
     4. Validate column references
 
@@ -317,12 +215,13 @@ def validate_sql(
         blacklist (Collection[str] | None): Optional collection of SQL command
             types to block (e.g., {"DELETE", "DROP"}). Use `DESTRUCTIVE_COMMANDS`
             for a pre-defined set. Defaults to None (no blacklist checking).
+        lint_rules (Collection[str] | None): Optional collection of SQLFLuff lint
+            rules to standardize to query. If None, defaults to `LINT_RULES`.
 
     Returns:
         exp.Expr: The parsed and validated SQL expression.
 
     Raises:
-        SQLLintError: If the query has lint violations that cannot be auto-fixed.
         SQLSyntaxError: If the query has invalid SQL syntax or is empty.
         SQLBlacklistedCommandError: If the query's command type is in the blacklist.
         SQLTableError: If the query references tables not in `table_columns`.
@@ -355,15 +254,15 @@ def validate_sql(
         ...     print(e.format_details())
         Column "bad_col" not found in table "users". Available columns: id, name
 
-        Ambiguous column reference (caught by linter before column validation):
+        Ambiguous column reference:
         >>> try:
         ...     validate_sql(
         ...         "SELECT id FROM users, orders",
         ...         {"users": {"id", "name"}, "orders": {"id", "total"}},
         ...     )
-        ... except SQLLintError as e:
+        ... except SQLColumnError as e:
         ...     print(type(e).__name__)
-        SQLLintError
+        SQLColumnError
 
         Blocking destructive commands:
         >>> try:
@@ -376,21 +275,20 @@ def validate_sql(
         ...     print(f"Blocked: {e.command_type}")
         Blocked: DELETE
     """  # noqa: DOC502 # We want to explicitly document exceptions raised by helpers.
-    # Step 1: Lint and auto-fix the query
-    linted_query = lint_sql(query, dialect=dialect)
+    if lint_rules is None:
+        lint_rules = LINT_RULES
+    if lint_rules:
+        query = sqlfluff.fix(
+            query,
+            dialect="ansi" if dialect is None else dialect,
+            exclude_rules=list(_SUPPORTED_RULES - set(lint_rules)),
+        )
 
-    # Step 2: Parse the linted query
-    expression = parse_sql(linted_query, dialect=dialect, blacklist=blacklist)
+    expression = parse_sql(query, dialect=dialect, blacklist=blacklist)
 
-    # Steps 3-4 pass the original `query` (not `linted_query`) for error messages
-    # so users see their own input in diagnostics, while `expression` carries the
-    # linted AST for correct structural validation.
+    _validate_sql_tables(expression, valid_tables=table_columns.keys(), query=query)
 
-    # Step 3: Validate table references
-    _validate_sql_tables(expression, valid_tables=table_columns.keys(), query_str=query)
-
-    # Step 4: Validate column references (includes ambiguity detection)
-    _validate_sql_columns(expression, table_columns, query_str=query)
+    _validate_sql_columns(expression, table_columns, query=query)
 
     return expression
 
@@ -484,7 +382,7 @@ def _get_sql_command_type(expression: exp.Expr) -> str | None:
     return _EXPRESSION_TYPE_MAP.get(type(expression))
 
 
-def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], query_str: str) -> None:
+def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], query: str) -> None:
     """Validate that a SQL expression only references allowed tables.
 
     Extracts all table references using scope analysis to correctly distinguish
@@ -495,7 +393,7 @@ def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], qu
         expression (exp.Expr): A pre-parsed sqlglot Expression.
         valid_tables (Collection[str]): Collection of allowed table names. Matching is
             case-insensitive.
-        query_str (str): The original query string for error messages.
+        query (str): The original query string for error messages.
 
     Raises:
         SQLTableError: If no valid tables are referenced, or if unknown tables
@@ -506,7 +404,7 @@ def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], qu
     if not referenced_table_names:
         raise SQLTableError(
             message="Query does not reference any tables. At least one table from valid_tables must be referenced.",
-            query=query_str,
+            query=query,
             invalid_tables=[],
         )
 
@@ -516,7 +414,7 @@ def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], qu
     if invalid_tables:
         raise SQLTableError(
             message=f"Query references invalid tables: {invalid_tables}",
-            query=query_str,
+            query=query,
             invalid_tables=invalid_tables,
         )
 
@@ -524,7 +422,7 @@ def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], qu
 def _validate_sql_columns(
     expression: exp.Expr,
     table_columns: dict[str, set[str]],
-    query_str: str,
+    query: str,
 ) -> None:
     """Validate that a SQL expression only references valid columns for base tables.
 
@@ -543,7 +441,7 @@ def _validate_sql_columns(
         table_columns (dict[str, set[str]]): Mapping of table names to their
             valid column names. Matching is case-insensitive for both table
             names and column names.
-        query_str (str): The original query string for error messages.
+        query (str): The original query string for error messages.
 
     Raises:
         SQLColumnError: If invalid or ambiguous columns are referenced. The
@@ -561,7 +459,7 @@ def _validate_sql_columns(
             message=_build_column_error_message(
                 errors.invalid_columns, errors.ambiguous_columns, errors.not_found_columns, table_columns
             ),
-            query=query_str,
+            query=query,
             invalid_columns=errors.invalid_columns,
             ambiguous_columns=errors.ambiguous_columns,
             not_found_columns=errors.not_found_columns,

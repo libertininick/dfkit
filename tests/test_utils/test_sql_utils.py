@@ -9,21 +9,15 @@ This module tests the SQL parsing and validation functions including:
 
 from __future__ import annotations
 
-import re
-from unittest.mock import MagicMock, patch
-
 import pytest
 import sqlfluff
 import sqlglot
 from pytest_check import check
-from sqlfluff.core.errors import SQLParseError
 from sqlglot import exp
 
-import dfkit.utils.sql_utils as sql_utils_module
 from dfkit.utils.exceptions import (
     SQLBlacklistedCommandError,
     SQLColumnError,
-    SQLLintError,
     SQLSyntaxError,
     SQLTableError,
     SQLValidationError,
@@ -34,7 +28,6 @@ from dfkit.utils.sql_utils import (
     _get_sql_command_type,
     _validate_sql_columns,
     _validate_sql_tables,
-    lint_sql,
     parse_sql,
     validate_sql,
 )
@@ -1732,9 +1725,9 @@ class TestValidateSQLSyntaxErrors:
     These tests verify that parse_sql errors propagate correctly through validate_sql.
     """
 
-    def test_validate_sql_invalid_syntax_raises_sql_lint_error(self) -> None:
-        """Query with invalid syntax should raise SQLLintError (lint runs first and catches PRS)."""
-        with pytest.raises(SQLLintError):
+    def test_validate_sql_invalid_syntax_raises_sql_syntax_error(self) -> None:
+        """Query with invalid syntax should raise SQLSyntaxError."""
+        with pytest.raises(SQLSyntaxError):
             validate_sql("SELECT id FROM (SELECT a FROM t", {"users": {"id", "name"}})
 
     def test_validate_sql_empty_query_raises_sql_syntax_error(self) -> None:
@@ -1796,13 +1789,15 @@ class TestValidateSQLTableErrors:
             validate_sql("SELECT 1", {"users": {"id", "name"}})
 
     def test_validate_sql_table_error_contains_query(self) -> None:
-        """SQLTableError should contain the original query string."""
+        """SQLTableError should contain the query (possibly auto-fixed with trailing newline)."""
         query = "SELECT id FROM bad_table"
         with pytest.raises(SQLTableError) as exc_info:
             validate_sql(query, {"users": {"id", "name"}})
 
         with check:
-            assert exc_info.value.query == query
+            assert exc_info.value.query is not None
+        with check:
+            assert query in exc_info.value.query
 
 
 class TestValidateSQLColumnErrors:
@@ -1864,75 +1859,55 @@ class TestValidateSQLColumnErrors:
 class TestValidateSQLAmbiguousColumns:
     """Tests for validate_sql with ambiguous column references.
 
-    Since lint_sql runs before column validation, unqualified column references
-    in multi-table queries are caught by RF02 (SQLLintError) before reaching
-    _validate_sql_columns. These tests verify that behavior.
-    Single-table queries still reach _validate_sql_columns for column checks.
+    Ambiguous column references in multi-table queries are detected by
+    _validate_sql_columns and raise SQLColumnError.
     """
 
-    def test_validate_sql_ambiguous_column_raises_sql_lint_error(self) -> None:
-        """Ambiguous column reference is caught by RF02 lint rule before column validation."""
-        query = "SELECT id FROM users, orders"  # 'id' exists in both tables; RF02 fires first
+    def test_validate_sql_ambiguous_column_raises_sql_column_error(self) -> None:
+        """Ambiguous column reference in multi-table query raises SQLColumnError."""
+        query = "SELECT id FROM users, orders"  # 'id' exists in both tables
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        with pytest.raises(SQLLintError) as exc_info:
+        with pytest.raises(SQLColumnError) as exc_info:
             validate_sql(query, table_columns)
 
-        violations = exc_info.value.violations
         with check:
-            assert any(v["code"] == "RF02" for v in violations), "Should have RF02 violation"
+            assert "id" in exc_info.value.ambiguous_columns, "Should have ambiguous 'id' column"
 
-    def test_validate_sql_ambiguous_column_lint_error_contains_query(self) -> None:
-        """SQLLintError for unqualified multi-table refs should contain the original query."""
+    def test_validate_sql_ambiguous_column_error_contains_query(self) -> None:
+        """SQLColumnError for ambiguous multi-table refs should contain the original query."""
         query = "SELECT id FROM users, orders"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        with pytest.raises(SQLLintError) as exc_info:
+        with pytest.raises(SQLColumnError) as exc_info:
             validate_sql(query, table_columns)
 
         with check:
-            assert exc_info.value.query == query
+            assert exc_info.value.query is not None
 
-    def test_validate_sql_ambiguous_column_lint_error_has_fixed_query(self) -> None:
-        """SQLLintError for unqualified multi-table refs should carry the fixed_query attribute."""
-        query = "SELECT id FROM users, orders"
-        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
-
-        with pytest.raises(SQLLintError) as exc_info:
-            validate_sql(query, table_columns)
-
-        with check:
-            assert exc_info.value.fixed_query is not None
-
-    def test_validate_sql_ambiguous_multi_table_always_raises_lint_error(self) -> None:
-        """Any unqualified reference in a multi-table query raises SQLLintError via RF02."""
+    def test_validate_sql_ambiguous_multi_table_raises_column_error(self) -> None:
+        """Any unqualified ambiguous reference in a multi-table query raises SQLColumnError."""
         query = "SELECT id FROM users u, orders o"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        with pytest.raises(SQLLintError):
+        with pytest.raises(SQLColumnError):
             validate_sql(query, table_columns)
 
-    def test_validate_sql_qualified_column_raises_lint_error_for_other_rules(self) -> None:
-        """Qualified columns in multi-table queries may still fail other lint rules (AL01, AL08)."""
+    def test_validate_sql_qualified_columns_multi_table_succeeds(self) -> None:
+        """Qualified columns in multi-table queries should succeed validation."""
         query = "SELECT u.id, o.id FROM users u, orders o"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        # AL08 (reuse of alias 'id'), AL01 (implicit aliasing) and LT rules fire
-        with pytest.raises(SQLLintError) as exc_info:
-            validate_sql(query, table_columns)
+        result = validate_sql(query, table_columns)
+        assert isinstance(result, exp.Expr)
 
-        violations = exc_info.value.violations
-        violation_codes = {v["code"] for v in violations}
-        with check:
-            assert violation_codes - {"RF02"}, "Should have violations beyond RF02"
-
-    def test_validate_sql_unambiguous_column_single_table_raises_lint_error(self) -> None:
-        """Even a column unique to one table raises SQLLintError when query has multiple tables (RF02)."""
-        query = "SELECT name FROM users, orders"  # 'name' only in users, but RF02 still fires
+    def test_validate_sql_unambiguous_column_multi_table_succeeds(self) -> None:
+        """A column unique to one table in a multi-table query should succeed validation."""
+        query = "SELECT name FROM users, orders"  # 'name' only in users
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        with pytest.raises(SQLLintError):
-            validate_sql(query, table_columns)
+        result = validate_sql(query, table_columns)
+        assert isinstance(result, exp.Expr)
 
     def test_validate_sql_column_not_found_single_table_raises_sql_column_error(self) -> None:
         """Unqualified column not found in a single-table query raises SQLColumnError."""
@@ -1965,32 +1940,17 @@ class TestValidateSQLAmbiguousColumns:
 class TestValidateSQLLintIntegration:
     """Tests for validate_sql lint integration.
 
-    These tests verify that validate_sql applies lint_sql as the first
-    validation step, auto-fixing fixable issues and raising SQLLintError
-    for unfixable violations.
+    These tests verify that validate_sql applies sqlfluff.fix() as a best-effort
+    first step, auto-fixing fixable style issues without raising errors.
     """
 
     def test_validate_sql_auto_fixes_lowercase_keywords(self) -> None:
         """Given SQL with lowercase keywords, validate_sql should succeed after auto-fix."""
         # lowercase "select" and "from" are fixable lint issues
-        result = validate_sql("select id from users", {"users": {"id", "name"}})
-        assert isinstance(result, exp.Expr)
-
-    def test_validate_sql_raises_lint_error_on_unfixable_violation(self) -> None:
-        """Given SQL with unfixable lint violations, validate_sql should raise SQLLintError."""
-        # SELECT * triggers AM01 (wildcard) which cannot be auto-fixed
-        with pytest.raises(SQLLintError):
-            validate_sql("SELECT * FROM users", {"users": {"id", "name"}})
-
-    def test_validate_sql_lint_error_contains_violations(self) -> None:
-        """Given unfixable SQL, SQLLintError should contain violation details."""
-        with pytest.raises(SQLLintError) as exc_info:
-            validate_sql("SELECT * FROM users", {"users": {"id", "name"}})
-
-        violations = exc_info.value.violations
-        violation_codes = {v["code"] for v in violations}
-        with check:
-            assert "AM04" in violation_codes, "SELECT * should trigger AM04 violation"
+        query = "select id from users"
+        result = validate_sql(query, {"users": {"id", "name"}})
+        expected_expression = parse_sql(query)
+        assert result == expected_expression
 
     def test_validate_sql_lint_then_column_validation_succeeds(self) -> None:
         """Given SQL with fixable lint issues and valid columns, both checks should pass."""
@@ -2001,26 +1961,21 @@ class TestValidateSQLLintIntegration:
         )
         assert isinstance(result, exp.Expr)
 
-    def test_validate_sql_lint_before_parse_error(self) -> None:
-        """Given SQL with both a lint violation and a parse error, lint error should take precedence."""
-        # Unclosed paren causes a parse error (PRS), but lint catches it first and raises SQLLintError
-        # rather than SQLSyntaxError, proving lint runs before parse validation
-        with pytest.raises(SQLLintError):
-            validate_sql("SELECT id FROM (SELECT id FROM t", {"t": {"id"}})
+    def test_validate_sql_passes_through_with_unfixable_lint_rules(self) -> None:
+        """When sqlfluff.fix() raises SQLBaseError, validate_sql continues with the original query."""
+        query = "SELECT * FROM users;"  # Query produces an unknown number of result columns
+        result = validate_sql(query, {"users": {"id", "name"}}, lint_rules=["AM04"])  # can't fix AM04
+        expected_expression = parse_sql(query)
+
+        assert result == expected_expression
 
 
 class TestValidateSQLErrorPrecedence:
     """Tests verifying error precedence in validate_sql.
 
     These tests verify that errors are raised in the expected order:
-    lint -> parse (syntax + blacklist) -> table -> column.
+    parse (syntax + blacklist) -> table -> column.
     """
-
-    def test_validate_sql_lint_error_before_table_error(self) -> None:
-        """Lint errors (PRS) should be raised before table errors since lint runs first."""
-        # This query has a parse error (unclosed paren) caught by sqlfluff PRS before table validation
-        with pytest.raises(SQLLintError):
-            validate_sql("SELECT id FROM (SELECT a FROM bad_table", {"users": {"id"}})
 
     def test_validate_sql_blacklist_error_before_table_error(self) -> None:
         """Blacklist errors should be raised before table errors."""
@@ -2069,232 +2024,19 @@ class TestValidateSQLEdgeCases:
 # endregion
 
 
-class TestLintSQL:
-    """Tests for lint_sql function.
-
-    These tests verify that lint_sql auto-fixes SQL style issues and raises
-    SQLLintError when unfixable violations remain after the fix pass.
-    """
-
-    def test_lint_sql_clean_query_returns_unchanged(self) -> None:
-        """A well-formatted query should be returned unchanged (or equivalently formatted).
-
-        Given SQL that already conforms to the default ANSI style conventions,
-        lint_sql should return the same SQL (possibly with a trailing newline).
-        """
-        # Arrange
-        query = "SELECT id FROM t\n"
-
-        # Act
-        result = lint_sql(query)
-
-        # Assert
-        assert result.strip() == "SELECT id FROM t"
-
-    def test_lint_sql_fixes_keyword_casing(self) -> None:
-        """A query with lowercase keywords should pass through lint_sql without error.
-
-        sqlfluff's default ANSI fix pass does not enforce keyword casing, so a
-        lowercase query like "select id from t" is accepted without violations.
-        The result should be a valid SQL string containing the expected identifiers.
-        """
-        # Arrange
-        query = "select id from t"
-
-        # Act
-        result = lint_sql(query)
-
-        # Assert — the function should not raise; the result contains expected tokens
-        with check:
-            assert isinstance(result, str), "lint_sql should return a string"
-        with check:
-            assert "select" in result.lower(), "Result should contain the select keyword"
-        with check:
-            assert "from" in result.lower(), "Result should contain the from keyword"
-
-    def test_lint_sql_fixes_whitespace(self) -> None:
-        """Extra whitespace between tokens should be collapsed by the fix pass.
-
-        sqlfluff enforces single-space separation between tokens. Given SQL with
-        multiple consecutive spaces, lint_sql should return cleaned SQL without
-        the redundant spaces.
-        """
-        # Arrange
-        query = "SELECT  id  FROM  t"
-
-        # Act
-        result = lint_sql(query)
-
-        # Assert — double spaces should be gone after fix
-        with check:
-            assert "  " not in result.strip(), "Double spaces should be removed by lint fix"
-
-    def test_lint_sql_raises_on_unfixable_violations(self) -> None:
-        """Remaining violations after fix pass should raise SQLLintError.
-
-        When sqlfluff.lint returns a non-empty violations list after the fix
-        pass, lint_sql must raise SQLLintError carrying the original query,
-        the auto-fixed query (as fixed_query), and the unfixable violations.
-        """
-        # Arrange
-        original_query = "SELECT id FROM t"
-        auto_fixed_query = "SELECT id FROM t\n"
-        fake_violations = [{"code": "CP01", "line_no": 1, "line_pos": 1, "description": "Keywords must be upper case."}]
-
-        mock_fix = MagicMock(spec=sqlfluff.fix, return_value=auto_fixed_query)
-        mock_lint = MagicMock(spec=sqlfluff.lint, return_value=fake_violations)
-
-        with (
-            patch("dfkit.utils.sql_utils.sqlfluff.fix", mock_fix),
-            patch("dfkit.utils.sql_utils.sqlfluff.lint", mock_lint),
-            pytest.raises(SQLLintError) as exc_info,
-        ):
-            # Act
-            lint_sql(original_query)
-
-        error = exc_info.value
-        with check:
-            assert error.violations == fake_violations, "Exception should carry the unfixable violations"
-        with check:
-            assert error.query == original_query, "Exception should carry the original query"
-        with check:
-            assert len(error.violations) == 1, "One violation should be present"
-        with check:
-            assert error.fixed_query == auto_fixed_query, "Exception should carry the auto-fixed query"
-
-    def test_lint_sql_internal_error_sets_fixed_query_to_none(self) -> None:
-        """SQLLintError raised from an internal sqlfluff error should have fixed_query=None.
-
-        When sqlfluff.fix raises SQLBaseError, lint_sql re-raises it as
-        SQLLintError without a fixed_query because the fix pass never completed.
-        The fixed_query attribute must be None in this case.
-        """
-        # Arrange — mock sqlfluff.fix to raise SQLBaseError (an external boundary)
-        query = "SELECT id FROM users"
-        mock_fix = MagicMock(spec=sqlfluff.fix, side_effect=SQLParseError("parse failure"))
-
-        with (
-            patch("dfkit.utils.sql_utils.sqlfluff.fix", mock_fix),
-            pytest.raises(SQLLintError) as exc_info,
-        ):
-            # Act
-            lint_sql(query)
-
-        error = exc_info.value
-        with check:
-            assert error.fixed_query is None, "fixed_query should be None when raised from SQLBaseError branch"
-        with check:
-            assert error.query == query, "original query should still be stored"
-
-    def test_lint_sql_preserves_query_semantics(self) -> None:
-        """Linting a valid query should preserve its semantics.
-
-        The fixed SQL returned by lint_sql should parse to the same logical
-        structure as the original query when both are parsed with sqlglot.
-        """
-        # Arrange
-        query = "select id, name from users where active = 1"
-
-        # Act
-        result = lint_sql(query)
-
-        # Assert — both the input and output parse to equivalent SELECT expressions
-        original_parsed = sqlglot.parse_one(query)
-        result_parsed = sqlglot.parse_one(result)
-
-        with check:
-            assert isinstance(result_parsed, exp.Select), "Result should parse to a SELECT expression"
-        with check:
-            # Both should select the same columns from the same table
-            original_tables = {t.name.lower() for t in original_parsed.find_all(exp.Table)}
-            result_tables = {t.name.lower() for t in result_parsed.find_all(exp.Table)}
-            assert original_tables == result_tables, "Fixed query should reference the same tables"
-
-    def test_lint_sql_with_dialect(self) -> None:
-        """Calling lint_sql with an explicit dialect should not raise an error.
-
-        Passing dialect="postgres" should be forwarded to sqlfluff and produce
-        valid output for a query that conforms to postgres conventions.
-        """
-        # Arrange
-        query = "SELECT id FROM users\n"
-
-        # Act & Assert — should not raise
-        result = lint_sql(query, dialect="postgres")
-
-        with check:
-            assert isinstance(result, str), "lint_sql should return a string"
-        with check:
-            assert len(result) > 0, "Returned SQL should be non-empty"
+class TestLintRulesConstant:
+    """Tests for the LINT_RULES constant."""
 
     def test_lint_rules_constant_structure_and_format(self) -> None:
-        """LINT_RULES constant must be a non-empty list of well-formed rule codes.
+        """LINT_RULES constant must be a non-empty list of supported rule codes.
 
         Verifies structural and content constraints on LINT_RULES:
-        - It is a non-empty list of strings.
-        - Every rule code matches the two-uppercase-letter + two-digit pattern
-          (e.g. "AL01", "CP02").
-        - Dialect-specific rules excluded by design (JJ01, TQ01, TQ02, TQ03)
-          are not present.
-        - LINT_RULES is exported via the module's __all__ list.
+        - Contains exactly 39 rules.
+        - Every rule code is supported by SQLFluff
         """
-        rule_pattern = re.compile(r"^[A-Z]{2}\d{2}$")
-        excluded_rules = {"JJ01", "TQ01", "TQ02", "TQ03"}
-
-        # Arrange & Assert — structural checks
         with check:
-            assert isinstance(LINT_RULES, list), "LINT_RULES should be a list"
+            assert len(LINT_RULES) == 39, f"LINT_RULES should contain exactly 39 rules, got {len(LINT_RULES)}"
         with check:
-            assert len(LINT_RULES) > 0, "LINT_RULES should not be empty"
-
-        # Every entry must be a string matching the expected rule-code format
-        for rule in LINT_RULES:
-            with check:
-                assert isinstance(rule, str), f"Rule {rule!r} should be a string"
-            with check:
-                assert rule_pattern.match(rule) is not None, (
-                    f"Rule {rule!r} does not match expected pattern of 2 uppercase letters + 2 digits"
-                )
-
-        # Dialect-specific rules must be absent
-        for excluded in excluded_rules:
-            with check:
-                assert excluded not in LINT_RULES, f"Dialect-specific rule {excluded!r} should not be in LINT_RULES"
-
-        # LINT_RULES must be publicly exported
-        with check:
-            assert "LINT_RULES" in sql_utils_module.__all__, "LINT_RULES should be listed in __all__"
-
-    def test_lint_sql_empty_string_input(self) -> None:
-        """Empty string input should return empty string."""
-        assert lint_sql("") == ""  # noqa: PLC1901
-
-    def test_lint_sql_multiline_join_query(self) -> None:
-        """A multiline JOIN query should be linted and returned as a non-empty string.
-
-        Verifies that lint_sql handles a realistic multi-line query with a JOIN
-        without raising an error, and that the returned SQL preserves the key
-        tokens SELECT, JOIN, and WHERE from the original query.
-        """
-        # Arrange
-        query = (
-            "SELECT u.id, u.name, o.total\n"
-            "FROM users AS u\n"
-            "INNER JOIN orders AS o ON u.id = o.user_id\n"
-            "WHERE o.total > 100\n"
-        )
-
-        # Act
-        result = lint_sql(query)
-
-        # Assert — result is a non-empty string containing key SQL tokens
-        with check:
-            assert isinstance(result, str), "lint_sql should return a string"
-        with check:
-            assert len(result) > 0, "Result should be non-empty"
-        with check:
-            assert "SELECT" in result.upper(), "Result should contain SELECT"
-        with check:
-            assert "JOIN" in result.upper(), "Result should contain JOIN"
-        with check:
-            assert "WHERE" in result.upper(), "Result should contain WHERE"
+            all_supported_rules = {r.code for r in sqlfluff.list_rules()}
+            unsupported_rules = LINT_RULES - all_supported_rules
+            assert not unsupported_rules, f"Found unsupported rules {unsupported_rules}"
