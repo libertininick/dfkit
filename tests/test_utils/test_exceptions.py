@@ -599,7 +599,7 @@ class TestExceptionsCatchableByBaseClass:
         ]
         for error_type in error_types:
             try:
-                self._simulate_exceptions(error_type)
+                _raise_simulated_exception(error_type)
             except SQLValidationError as e:
                 errors_caught.append(type(e).__name__)
                 # Verify query is accessible on all caught exceptions
@@ -607,7 +607,7 @@ class TestExceptionsCatchableByBaseClass:
                     assert e.query == "SELECT * FROM users", f"Query should be accessible on {type(e).__name__}"
 
         with check:
-            assert len(errors_caught) == 4, "All four exceptions should be caught"
+            assert len(errors_caught) == 4, f"All four exceptions should be caught; caught {errors_caught}"
         with check:
             assert "SQLSyntaxError" in errors_caught, "SQLSyntaxError should be caught by base class"
         with check:
@@ -640,50 +640,31 @@ class TestExceptionsCatchableByBaseClass:
         with check:
             assert not isinstance(syntax_error, SQLColumnError), "SQLSyntaxError should not be caught by SQLColumnError"
 
-    @staticmethod
-    def _simulate_exceptions(error_type: str) -> None:
-        """Simulate different SQL validation errors.
 
-        Raises a SQLValidationError subclass based on error_type by delegating
-        to _build_simulated_exception, which selects the appropriate exception.
-        See _build_simulated_exception for the full set of supported error types.
-
-        Args:
-            error_type (str): The type of error to simulate. One of "syntax", "table",
-                "column", or "blacklist".
-
-        Raises:
-            _build_simulated_exception: Always raises the exception returned by
-                _build_simulated_exception for the given error_type.
-        """
-        raise _build_simulated_exception(error_type)
-
-
-def _build_simulated_exception(error_type: str) -> SQLValidationError:
-    """Build a SQLValidationError subclass instance for a given error type string.
-
-    Used by TestExceptionsCatchableByBaseClass._simulate_exceptions to produce
-    the appropriate exception without exceeding complexity limits.
+def _raise_simulated_exception(error_type: str) -> None:
+    """Raise a SQLValidationError subclass instance for a given error type string.
 
     Args:
         error_type (str): The type of error to create. One of "syntax", "table",
             "column", or "blacklist".
 
-    Returns:
-        SQLValidationError: The constructed exception instance.
-
     Raises:
-        ValueError: If error_type is not a recognised value.
+        SQLSyntaxError:
+        SQLTableError:
+        SQLColumnError:
+        SQLBlacklistedCommandError:
+        ValueError: If error_type is not a recognized value.
     """
     query = "SELECT * FROM users"
-    exceptions: dict[str, SQLValidationError] = {
-        "syntax": SQLSyntaxError("Syntax error", query=query, errors=[{"description": "Invalid token", "line": 1}]),
-        "table": SQLTableError("Table not found", query=query, invalid_tables=["users"]),
-        "column": SQLColumnError("Column not found", query=query, invalid_columns={"users": ["id"]}),
-        "blacklist": SQLBlacklistedCommandError(
+    if error_type == "syntax":
+        raise SQLSyntaxError("Syntax error", query=query, errors=[{"description": "Invalid token", "line": 1}])
+    elif error_type == "table":
+        raise SQLTableError("Table not found", query=query, invalid_tables=["users"])
+    elif error_type == "column":
+        raise SQLColumnError("Column not found", query=query, invalid_columns={"users": ["id"]})
+    elif error_type == "blacklist":
+        raise SQLBlacklistedCommandError(
             "Blacklisted command", query=query, command_type="DELETE", blacklist={"DELETE", "DROP"}
-        ),
-    }
-    if error_type not in exceptions:
+        )
+    else:
         raise ValueError(f"Unknown error_type: {error_type}")
-    return exceptions[error_type]

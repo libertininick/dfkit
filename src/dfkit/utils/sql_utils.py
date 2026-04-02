@@ -216,7 +216,7 @@ def validate_sql(
             types to block (e.g., {"DELETE", "DROP"}). Use `DESTRUCTIVE_COMMANDS`
             for a pre-defined set. Defaults to None (no blacklist checking).
         lint_rules (Collection[str] | None): Optional collection of SQLFLuff lint
-            rules to standardize to query. If None, defaults to `LINT_RULES`.
+            rules to standardize the query. If None, defaults to `LINT_RULES`.
 
     Returns:
         exp.Expr: The parsed and validated SQL expression.
