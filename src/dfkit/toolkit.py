@@ -42,6 +42,7 @@ from dfkit.utils.exceptions import (
     DuplicateColumnsError,
     SQLBlacklistedCommandError,
     SQLColumnError,
+    SQLLintError,
     SQLSyntaxError,
     SQLTableError,
 )
@@ -617,7 +618,7 @@ class DataFrameToolkit:
             >>> toolkit = DataFrameToolkit()
             >>> ref = toolkit.register_dataframe("sales", pl.DataFrame({"id": [1], "amount": [100]}))
             >>> result = toolkit.execute_sql(
-            ...     query=f"SELECT * FROM {ref.id} WHERE amount > 50",
+            ...     query=f"SELECT id, amount FROM {ref.id} WHERE amount > 50",
             ...     result_name="high_sales",
             ...     result_description="Sales over $50",
             ... )
@@ -1087,40 +1088,8 @@ class DataFrameToolkit:
         table_columns = self._build_table_columns_schema()
         try:
             return validate_sql(query, table_columns, blacklist=DESTRUCTIVE_COMMANDS)
-        except SQLSyntaxError as e:
-            return ToolCallError(
-                error_type="SQLSyntaxError",
-                message=str(e),
-                details={"errors": e.errors, "query": e.query},
-            )
-        except SQLTableError as e:
-            return ToolCallError(
-                error_type="SQLTableError",
-                message=str(e),
-                details={
-                    "invalid_tables": e.invalid_tables,
-                    "available_tables": list(table_columns.keys()),
-                    "query": e.query,
-                },
-            )
-        except SQLColumnError as e:
-            return ToolCallError(
-                error_type="SQLColumnError",
-                message=e.format_details(),
-                details={
-                    "invalid_columns": e.invalid_columns,
-                    "ambiguous_columns": e.ambiguous_columns,
-                    "not_found_columns": e.not_found_columns,
-                    "table_columns": {k: list(v) for k, v in e.table_columns.items()},
-                    "query": e.query,
-                },
-            )
-        except SQLBlacklistedCommandError as e:
-            return ToolCallError(
-                error_type="SQLBlacklistedCommand",
-                message=f"Command '{e.command_type}' is not allowed. Only SELECT queries are permitted.",
-                details={"blocked_command": e.command_type, "query": e.query},
-            )
+        except (SQLLintError, SQLSyntaxError, SQLTableError, SQLColumnError, SQLBlacklistedCommandError) as e:
+            return _sql_error_to_tool_call_error(e, table_columns)
 
     def _build_table_columns_schema(self) -> dict[str, set[str]]:
         """Build table_columns schema from registered references.
@@ -1162,6 +1131,62 @@ def _current_tool_name() -> str:
     caller_frame = frame.f_back if frame is not None else None
     name = caller_frame.f_code.co_name if caller_frame is not None else "unknown"
     return name
+
+
+def _sql_error_to_tool_call_error(
+    error: SQLLintError | SQLSyntaxError | SQLTableError | SQLColumnError | SQLBlacklistedCommandError,
+    table_columns: dict[str, set[str]],
+) -> ToolCallError:
+    """Convert a SQL validation exception to a ToolCallError.
+
+    Args:
+        error (SQLLintError | SQLSyntaxError | SQLTableError | SQLColumnError | SQLBlacklistedCommandError):
+            The SQL validation exception to convert.
+        table_columns (dict[str, set[str]]): The table-column schema used during
+            validation, needed to populate available_tables for SQLTableError.
+
+    Returns:
+        ToolCallError: A structured error response with type, message, and details.
+    """
+    if isinstance(error, SQLLintError):
+        return ToolCallError(
+            error_type="SQLLintError",
+            message=str(error),
+            details={"violations": error.violations, "fixed_query": error.fixed_query, "query": error.query},
+        )
+    if isinstance(error, SQLSyntaxError):
+        return ToolCallError(
+            error_type="SQLSyntaxError",
+            message=str(error),
+            details={"errors": error.errors, "query": error.query},
+        )
+    if isinstance(error, SQLTableError):
+        return ToolCallError(
+            error_type="SQLTableError",
+            message=str(error),
+            details={
+                "invalid_tables": error.invalid_tables,
+                "available_tables": list(table_columns.keys()),
+                "query": error.query,
+            },
+        )
+    if isinstance(error, SQLColumnError):
+        return ToolCallError(
+            error_type="SQLColumnError",
+            message=error.format_details(),
+            details={
+                "invalid_columns": error.invalid_columns,
+                "ambiguous_columns": error.ambiguous_columns,
+                "not_found_columns": error.not_found_columns,
+                "table_columns": {k: list(v) for k, v in error.table_columns.items()},
+                "query": error.query,
+            },
+        )
+    return ToolCallError(
+        error_type="SQLBlacklistedCommand",
+        message=f"Command '{error.command_type}' is not allowed. Only SELECT queries are permitted.",
+        details={"blocked_command": error.command_type, "query": error.query},
+    )
 
 
 def _handle_column_validation_error(

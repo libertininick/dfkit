@@ -1732,10 +1732,10 @@ class TestValidateSQLSyntaxErrors:
     These tests verify that parse_sql errors propagate correctly through validate_sql.
     """
 
-    def test_validate_sql_invalid_syntax_raises_sql_syntax_error(self) -> None:
-        """Query with invalid syntax should raise SQLSyntaxError."""
-        with pytest.raises(SQLSyntaxError):
-            validate_sql("SELECT * FROM (SELECT a FROM t", {"users": {"id", "name"}})
+    def test_validate_sql_invalid_syntax_raises_sql_lint_error(self) -> None:
+        """Query with invalid syntax should raise SQLLintError (lint runs first and catches PRS)."""
+        with pytest.raises(SQLLintError):
+            validate_sql("SELECT id FROM (SELECT a FROM t", {"users": {"id", "name"}})
 
     def test_validate_sql_empty_query_raises_sql_syntax_error(self) -> None:
         """Empty string query should raise SQLSyntaxError."""
@@ -1864,103 +1864,140 @@ class TestValidateSQLColumnErrors:
 class TestValidateSQLAmbiguousColumns:
     """Tests for validate_sql with ambiguous column references.
 
-    These tests verify that ambiguous column references (unqualified columns
-    that exist in multiple tables) are properly detected and reported.
+    Since lint_sql runs before column validation, unqualified column references
+    in multi-table queries are caught by RF02 (SQLLintError) before reaching
+    _validate_sql_columns. These tests verify that behavior.
+    Single-table queries still reach _validate_sql_columns for column checks.
     """
 
-    def test_validate_sql_ambiguous_column_raises_sql_column_error(self) -> None:
-        """Ambiguous column reference should raise SQLColumnError."""
-        query = "SELECT id FROM users, orders"  # 'id' exists in both tables
+    def test_validate_sql_ambiguous_column_raises_sql_lint_error(self) -> None:
+        """Ambiguous column reference is caught by RF02 lint rule before column validation."""
+        query = "SELECT id FROM users, orders"  # 'id' exists in both tables; RF02 fires first
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        with pytest.raises(SQLColumnError) as exc_info:
+        with pytest.raises(SQLLintError) as exc_info:
             validate_sql(query, table_columns)
 
+        violations = exc_info.value.violations
         with check:
-            assert "id" in exc_info.value.ambiguous_columns, "Should report 'id' as ambiguous"
+            assert any(v["code"] == "RF02" for v in violations), "Should have RF02 violation"
 
-    def test_validate_sql_ambiguous_column_lists_tables(self) -> None:
-        """Ambiguous column error should list all tables where column exists."""
-        query = "SELECT id FROM users u, orders o"
-        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
-
-        with pytest.raises(SQLColumnError) as exc_info:
-            validate_sql(query, table_columns)
-
-        tables = exc_info.value.ambiguous_columns.get("id", [])
-        with check:
-            assert "users" in tables, "Should list 'users' table"
-        with check:
-            assert "orders" in tables, "Should list 'orders' table"
-
-    def test_validate_sql_ambiguous_column_contains_query(self) -> None:
-        """SQLColumnError for ambiguous columns should contain the query."""
+    def test_validate_sql_ambiguous_column_lint_error_contains_query(self) -> None:
+        """SQLLintError for unqualified multi-table refs should contain the original query."""
         query = "SELECT id FROM users, orders"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        with pytest.raises(SQLColumnError) as exc_info:
+        with pytest.raises(SQLLintError) as exc_info:
             validate_sql(query, table_columns)
 
         with check:
             assert exc_info.value.query == query
 
-    def test_validate_sql_ambiguous_column_format_details(self) -> None:
-        """format_details should provide actionable feedback for ambiguous columns."""
+    def test_validate_sql_ambiguous_column_lint_error_has_fixed_query(self) -> None:
+        """SQLLintError for unqualified multi-table refs should carry the fixed_query attribute."""
         query = "SELECT id FROM users, orders"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        with pytest.raises(SQLColumnError) as exc_info:
+        with pytest.raises(SQLLintError) as exc_info:
             validate_sql(query, table_columns)
 
-        details = exc_info.value.format_details()
         with check:
-            assert "ambiguous" in details.lower(), "Should mention ambiguous"
-        with check:
-            assert "users" in details and "orders" in details, "Should list tables"
+            assert exc_info.value.fixed_query is not None
 
-    def test_validate_sql_qualified_column_not_ambiguous(self) -> None:
-        """Qualified column reference should not be considered ambiguous."""
+    def test_validate_sql_ambiguous_multi_table_always_raises_lint_error(self) -> None:
+        """Any unqualified reference in a multi-table query raises SQLLintError via RF02."""
+        query = "SELECT id FROM users u, orders o"
+        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
+
+        with pytest.raises(SQLLintError):
+            validate_sql(query, table_columns)
+
+    def test_validate_sql_qualified_column_raises_lint_error_for_other_rules(self) -> None:
+        """Qualified columns in multi-table queries may still fail other lint rules (AL01, AL08)."""
         query = "SELECT u.id, o.id FROM users u, orders o"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        # Should not raise - columns are properly qualified
-        validate_sql(query, table_columns)
+        # AL08 (reuse of alias 'id'), AL01 (implicit aliasing) and LT rules fire
+        with pytest.raises(SQLLintError):
+            validate_sql(query, table_columns)
 
-    def test_validate_sql_unambiguous_column_single_table_match(self) -> None:
-        """Column existing in only one table should not be ambiguous."""
-        query = "SELECT name FROM users, orders"  # 'name' only in users
+    def test_validate_sql_unambiguous_column_single_table_raises_lint_error(self) -> None:
+        """Even a column unique to one table raises SQLLintError when query has multiple tables (RF02)."""
+        query = "SELECT name FROM users, orders"  # 'name' only in users, but RF02 still fires
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        # Should not raise - 'name' only exists in 'users'
-        validate_sql(query, table_columns)
+        with pytest.raises(SQLLintError):
+            validate_sql(query, table_columns)
 
-    def test_validate_sql_column_not_found_in_any_table_raises_error(self) -> None:
-        """Unqualified column not found in any table should raise SQLColumnError."""
-        query = "SELECT nonexistent FROM users, orders"
-        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
+    def test_validate_sql_column_not_found_single_table_raises_sql_column_error(self) -> None:
+        """Unqualified column not found in a single-table query raises SQLColumnError."""
+        query = "SELECT nonexistent FROM users"
+        table_columns = {"users": {"id", "name"}}
 
         with pytest.raises(SQLColumnError) as exc_info:
             validate_sql(query, table_columns)
 
         with check:
-            assert "nonexistent" in exc_info.value.not_found_columns, "Should report 'nonexistent' as not found"
-        with check:
-            searched_tables = exc_info.value.not_found_columns.get("nonexistent", [])
-            assert "users" in searched_tables and "orders" in searched_tables, "Should list searched tables"
+            assert "nonexistent" in exc_info.value.invalid_columns.get("users", []), (
+                "Should report 'nonexistent' as invalid for table 'users'"
+            )
 
     def test_validate_sql_column_not_found_format_details(self) -> None:
         """format_details should provide actionable feedback for not-found columns."""
-        query = "SELECT nonexistent FROM users, orders"
-        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
+        query = "SELECT nonexistent FROM users"
+        table_columns = {"users": {"id", "name"}}
 
         with pytest.raises(SQLColumnError) as exc_info:
             validate_sql(query, table_columns)
 
         details = exc_info.value.format_details()
         with check:
-            assert "not found in any table" in details.lower(), "Should mention not found"
+            assert "not found" in details.lower(), "Should mention not found"
         with check:
-            assert "users" in details and "orders" in details, "Should list searched tables"
+            assert "users" in details, "Should list the searched table"
+
+
+class TestValidateSQLLintIntegration:
+    """Tests for validate_sql lint integration.
+
+    These tests verify that validate_sql applies lint_sql as the first
+    validation step, auto-fixing fixable issues and raising SQLLintError
+    for unfixable violations.
+    """
+
+    def test_validate_sql_auto_fixes_lowercase_keywords(self) -> None:
+        """Given SQL with lowercase keywords, validate_sql should succeed after auto-fix."""
+        # lowercase "select" and "from" are fixable lint issues
+        result = validate_sql("select id from users", {"users": {"id", "name"}})
+        assert isinstance(result, exp.Expr)
+
+    def test_validate_sql_raises_lint_error_on_unfixable_violation(self) -> None:
+        """Given SQL with unfixable lint violations, validate_sql should raise SQLLintError."""
+        # SELECT * triggers AM01 (wildcard) which cannot be auto-fixed
+        with pytest.raises(SQLLintError):
+            validate_sql("SELECT * FROM users", {"users": {"id", "name"}})
+
+    def test_validate_sql_lint_error_contains_violations(self) -> None:
+        """Given unfixable SQL, SQLLintError should contain violation details."""
+        with pytest.raises(SQLLintError) as exc_info:
+            validate_sql("SELECT * FROM users", {"users": {"id", "name"}})
+        assert len(exc_info.value.violations) > 0
+
+    def test_validate_sql_lint_then_column_validation_succeeds(self) -> None:
+        """Given SQL with fixable lint issues and valid columns, both checks should pass."""
+        # lowercase keywords are auto-fixed, then column validation passes
+        result = validate_sql(
+            "select id, name from users where id > 0",
+            {"users": {"id", "name", "email"}},
+        )
+        assert isinstance(result, exp.Expr)
+
+    def test_validate_sql_lint_before_parse_error(self) -> None:
+        """Given SQL with lint violations, lint error should be raised before parse errors."""
+        # SELECT * has unfixable lint violations; even though it's valid SQL,
+        # the lint step runs first and raises SQLLintError
+        with pytest.raises(SQLLintError):
+            validate_sql("SELECT * FROM users", {"users": {"id", "name"}})
 
 
 class TestValidateSQLErrorPrecedence:
@@ -1970,11 +2007,11 @@ class TestValidateSQLErrorPrecedence:
     syntax -> blacklist -> table -> column -> qualify.
     """
 
-    def test_validate_sql_syntax_error_before_table_error(self) -> None:
-        """Syntax errors should be raised before table errors."""
-        # This query has both syntax error (unclosed paren) and would have table error
-        with pytest.raises(SQLSyntaxError):
-            validate_sql("SELECT * FROM (SELECT a FROM bad_table", {"users": {"id"}})
+    def test_validate_sql_lint_error_before_table_error(self) -> None:
+        """Lint errors (PRS) should be raised before table errors since lint runs first."""
+        # This query has a parse error (unclosed paren) caught by sqlfluff PRS before table validation
+        with pytest.raises(SQLLintError):
+            validate_sql("SELECT id FROM (SELECT a FROM bad_table", {"users": {"id"}})
 
     def test_validate_sql_blacklist_error_before_table_error(self) -> None:
         """Blacklist errors should be raised before table errors."""
@@ -2009,19 +2046,20 @@ class TestValidateSQLEdgeCases:
         validate_sql("SELECT ID, NAME FROM users", {"users": {"id", "name"}})
 
     def test_validate_sql_with_cte_succeeds(self) -> None:
-        """Query with CTE should validate correctly."""
-        query = "WITH active AS (SELECT id, name FROM users WHERE active = true) SELECT id, name FROM active"
+        """Query with CTE should validate correctly when properly formatted."""
+        query = "WITH active AS (\n    SELECT id, name FROM users WHERE active = true\n) SELECT id, name FROM active"
         validate_sql(query, {"users": {"id", "name", "active"}})
 
     def test_validate_sql_with_subquery_succeeds(self) -> None:
-        """Query with subquery should validate correctly."""
-        query = "SELECT id, name FROM users WHERE id IN (SELECT user_id FROM orders)"
+        """Query with subquery should validate correctly when column references are qualified."""
+        query = "SELECT id, name FROM users WHERE id IN (SELECT orders.user_id FROM orders)"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "user_id"}}
         validate_sql(query, table_columns)
 
-    def test_validate_sql_star_select_succeeds(self) -> None:
-        """SELECT * should not raise errors."""
-        validate_sql("SELECT * FROM users", {"users": {"id", "name", "email"}})
+    def test_validate_sql_star_select_raises_lint_error(self) -> None:
+        """SELECT * raises SQLLintError due to AM04 (unknown number of result columns)."""
+        with pytest.raises(SQLLintError):
+            validate_sql("SELECT * FROM users", {"users": {"id", "name", "email"}})
 
 
 # endregion

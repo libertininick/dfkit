@@ -61,7 +61,7 @@ _EXPRESSION_TYPE_MAP: Final[dict[type[exp.Expr], str]] = {
 # Explicit list of sqlfluff rule codes applied by lint_sql.
 # Pinning these codes ensures upstream changes to sqlfluff's default rule bundles
 # do not silently alter this library's linting behavior.
-# NOTE: # Dialect-specific rules are excluded: JJ01 (Jinja), TQ01/TQ02/TQ03 (T-SQL).
+# NOTE: Dialect-specific rules are excluded: JJ01 (Jinja), TQ01/TQ02/TQ03 (T-SQL).
 LINT_RULES: Final[list[str]] = [
     # Aliasing
     "AL01",
@@ -139,52 +139,6 @@ LINT_RULES: Final[list[str]] = [
     "ST11",
     "ST12",
 ]
-
-# endregion
-
-
-# region Data Classes
-
-
-@dataclass(frozen=True)
-class _ColumnValidationResult:
-    """Result of validating a single column reference.
-
-    Attributes:
-        col_name (str): The name of the column being validated.
-        invalid_table (str | None): Table name if column is invalid, None otherwise.
-        ambiguous_tables (list[str] | None): Tables containing ambiguous column, None otherwise.
-        not_found_in_tables (list[str] | None): Tables searched when column not found in any, None otherwise.
-    """
-
-    col_name: str
-    invalid_table: str | None = None
-    ambiguous_tables: list[str] | None = None
-    not_found_in_tables: list[str] | None = None
-
-
-@dataclass
-class _ColumnErrors:
-    """Aggregated column validation errors from a SQL expression.
-
-    Attributes:
-        invalid_columns (dict[str, list[str]]): Mapping of table names to lists of
-            invalid column names that don't exist in that table.
-        ambiguous_columns (dict[str, list[str]]): Mapping of column names to lists of
-            table names where the column exists but the reference is ambiguous.
-        not_found_columns (dict[str, list[str]]): Mapping of column names to lists of
-            table names that were searched when the column was not found in any table.
-    """
-
-    invalid_columns: dict[str, list[str]]
-    ambiguous_columns: dict[str, list[str]]
-    not_found_columns: dict[str, list[str]]
-
-    @property
-    def has_errors(self) -> bool:
-        """Return True if any column errors were detected."""
-        return bool(self.invalid_columns or self.ambiguous_columns or self.not_found_columns)
-
 
 # endregion
 
@@ -348,9 +302,10 @@ def validate_sql(
     for complete SQL validation in the DataFrame toolkit.
 
     The validation steps are:
-    1. Parse the query using `parse_sql()` with optional blacklist
-    2. Validate table references
-    3. Validate column references
+    1. Lint and auto-fix the query using `lint_sql()`
+    2. Parse the linted query using `parse_sql()` with optional blacklist
+    3. Validate table references
+    4. Validate column references
 
     Args:
         query (str): The SQL query string to validate.
@@ -367,6 +322,7 @@ def validate_sql(
         exp.Expr: The parsed and validated SQL expression.
 
     Raises:
+        SQLLintError: If the query has lint violations that cannot be auto-fixed.
         SQLSyntaxError: If the query has invalid SQL syntax or is empty.
         SQLBlacklistedCommandError: If the query's command type is in the blacklist.
         SQLTableError: If the query references tables not in `table_columns`.
@@ -399,15 +355,15 @@ def validate_sql(
         ...     print(e.format_details())
         Column "bad_col" not found in table "users". Available columns: id, name
 
-        Ambiguous column reference:
+        Ambiguous column reference (caught by linter before column validation):
         >>> try:
         ...     validate_sql(
         ...         "SELECT id FROM users, orders",
         ...         {"users": {"id", "name"}, "orders": {"id", "total"}},
         ...     )
-        ... except SQLColumnError as e:
-        ...     print(e.format_details())
-        Column "id" is ambiguous. Found in tables: orders, users. Please qualify as "orders.id" or "users.id".
+        ... except SQLLintError as e:
+        ...     print(type(e).__name__)
+        SQLLintError
 
         Blocking destructive commands:
         >>> try:
@@ -420,13 +376,16 @@ def validate_sql(
         ...     print(f"Blocked: {e.command_type}")
         Blocked: DELETE
     """  # noqa: DOC502 # We want to explicitly document exceptions raised by helpers.
-    # Step 1: Parse the query
-    expression = parse_sql(query, dialect=dialect, blacklist=blacklist)
+    # Step 1: Lint and auto-fix the query
+    linted_query = lint_sql(query, dialect=dialect)
 
-    # Step 2: Validate table references
+    # Step 2: Parse the linted query
+    expression = parse_sql(linted_query, dialect=dialect, blacklist=blacklist)
+
+    # Step 3: Validate table references
     _validate_sql_tables(expression, valid_tables=table_columns.keys(), query_str=query)
 
-    # Step 3: Validate column references (includes ambiguity detection)
+    # Step 4: Validate column references (includes ambiguity detection)
     _validate_sql_columns(expression, table_columns, query_str=query)
 
     return expression
@@ -466,6 +425,46 @@ def extract_table_names(expression: exp.Expr) -> list[str]:
 
 
 # region Helpers
+
+
+@dataclass(frozen=True)
+class _ColumnValidationResult:
+    """Result of validating a single column reference.
+
+    Attributes:
+        col_name (str): The name of the column being validated.
+        invalid_table (str | None): Table name if column is invalid, None otherwise.
+        ambiguous_tables (list[str] | None): Tables containing ambiguous column, None otherwise.
+        not_found_in_tables (list[str] | None): Tables searched when column not found in any, None otherwise.
+    """
+
+    col_name: str
+    invalid_table: str | None = None
+    ambiguous_tables: list[str] | None = None
+    not_found_in_tables: list[str] | None = None
+
+
+@dataclass
+class _ColumnErrors:
+    """Aggregated column validation errors from a SQL expression.
+
+    Attributes:
+        invalid_columns (dict[str, list[str]]): Mapping of table names to lists of
+            invalid column names that don't exist in that table.
+        ambiguous_columns (dict[str, list[str]]): Mapping of column names to lists of
+            table names where the column exists but the reference is ambiguous.
+        not_found_columns (dict[str, list[str]]): Mapping of column names to lists of
+            table names that were searched when the column was not found in any table.
+    """
+
+    invalid_columns: dict[str, list[str]]
+    ambiguous_columns: dict[str, list[str]]
+    not_found_columns: dict[str, list[str]]
+
+    @property
+    def has_errors(self) -> bool:
+        """Return True if any column errors were detected."""
+        return bool(self.invalid_columns or self.ambiguous_columns or self.not_found_columns)
 
 
 def _get_sql_command_type(expression: exp.Expr) -> str | None:
