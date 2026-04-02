@@ -2004,7 +2004,7 @@ class TestValidateSQLErrorPrecedence:
     """Tests verifying error precedence in validate_sql.
 
     These tests verify that errors are raised in the expected order:
-    syntax -> blacklist -> table -> column -> qualify.
+    lint -> parse (syntax + blacklist) -> table -> column.
     """
 
     def test_validate_sql_lint_error_before_table_error(self) -> None:
