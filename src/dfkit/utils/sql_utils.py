@@ -382,6 +382,10 @@ def validate_sql(
     # Step 2: Parse the linted query
     expression = parse_sql(linted_query, dialect=dialect, blacklist=blacklist)
 
+    # Steps 3-4 pass the original `query` (not `linted_query`) for error messages
+    # so users see their own input in diagnostics, while `expression` carries the
+    # linted AST for correct structural validation.
+
     # Step 3: Validate table references
     _validate_sql_tables(expression, valid_tables=table_columns.keys(), query_str=query)
 
