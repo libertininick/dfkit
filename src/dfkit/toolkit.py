@@ -42,7 +42,6 @@ from dfkit.utils.exceptions import (
     DuplicateColumnsError,
     SQLBlacklistedCommandError,
     SQLColumnError,
-    SQLLintError,
     SQLSyntaxError,
     SQLTableError,
 )
@@ -1088,7 +1087,7 @@ class DataFrameToolkit:
         table_columns = self._build_table_columns_schema()
         try:
             return validate_sql(query, table_columns, blacklist=DESTRUCTIVE_COMMANDS)
-        except (SQLLintError, SQLSyntaxError, SQLTableError, SQLColumnError, SQLBlacklistedCommandError) as e:
+        except (SQLSyntaxError, SQLTableError, SQLColumnError, SQLBlacklistedCommandError) as e:
             return _sql_error_to_tool_call_error(e, table_columns)
 
     def _build_table_columns_schema(self) -> dict[str, set[str]]:
@@ -1134,13 +1133,13 @@ def _current_tool_name() -> str:
 
 
 def _sql_error_to_tool_call_error(
-    error: SQLLintError | SQLSyntaxError | SQLTableError | SQLColumnError | SQLBlacklistedCommandError,
+    error: SQLSyntaxError | SQLTableError | SQLColumnError | SQLBlacklistedCommandError,
     table_columns: dict[str, set[str]],
 ) -> ToolCallError:
     """Convert a SQL validation exception to a ToolCallError.
 
     Args:
-        error (SQLLintError | SQLSyntaxError | SQLTableError | SQLColumnError | SQLBlacklistedCommandError):
+        error (SQLSyntaxError | SQLTableError | SQLColumnError | SQLBlacklistedCommandError):
             The SQL validation exception to convert.
         table_columns (dict[str, set[str]]): The table-column schema used during
             validation, needed to populate available_tables for SQLTableError.
@@ -1148,12 +1147,6 @@ def _sql_error_to_tool_call_error(
     Returns:
         ToolCallError: A structured error response with type, message, and details.
     """
-    if isinstance(error, SQLLintError):
-        return ToolCallError(
-            error_type="SQLLintError",
-            message=str(error),
-            details={"violations": error.violations, "fixed_query": error.fixed_query, "query": error.query},
-        )
     if isinstance(error, SQLSyntaxError):
         return ToolCallError(
             error_type="SQLSyntaxError",

@@ -580,34 +580,8 @@ class TestExecuteSQL:
         with check:
             assert "already registered" in result.message.lower()
 
-    def test_execute_lint_error_returns_error(self, toolkit: DataFrameToolkit) -> None:
-        """Given SQL with unfixable lint violations, When called, Then ToolCallError with SQLLintError.
-
-        Args:
-            toolkit (DataFrameToolkit): Toolkit instance from fixture.
-        """
-        # Arrange
-        df = pl.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]})
-        ref = toolkit.register_dataframe("users", df)
-
-        # Act - SELECT * triggers unfixable AM01 lint violation
-        bad_query = f"SELECT * FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
-        result = toolkit.execute_sql(query=bad_query, result_name="result")
-
-        # Assert
-        with check:
-            assert isinstance(result, ToolCallError)
-        with check:
-            assert result.error_type == "SQLLintError"
-        with check:
-            assert "violations" in result.details
-        with check:
-            assert "fixed_query" in result.details
-        with check:
-            assert "query" in result.details
-
     def test_execute_syntax_error_returns_error(self, toolkit: DataFrameToolkit) -> None:
-        """Given invalid SQL, When called, Then ToolCallError with SQLLintError (lint catches PRS first).
+        """Given invalid SQL, When called, Then ToolCallError with SQLSyntaxError.
 
         Args:
             toolkit (DataFrameToolkit): Toolkit instance from fixture.
@@ -616,7 +590,7 @@ class TestExecuteSQL:
         df = pl.DataFrame({"id": [1, 2, 3]})
         ref = toolkit.register_dataframe("data", df)
 
-        # Act - intentionally malformed SQL (missing closing parenthesis); lint catches PRS before sqlglot
+        # Act - intentionally malformed SQL (missing closing parenthesis)
         bad_query = f"SELECT id FROM (SELECT id FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=bad_query, result_name="broken")
 
@@ -624,9 +598,9 @@ class TestExecuteSQL:
         with check:
             assert isinstance(result, ToolCallError)
         with check:
-            assert result.error_type == "SQLLintError"
+            assert result.error_type == "SQLSyntaxError"
         with check:
-            assert "violations" in result.details
+            assert "errors" in result.details
         with check:
             assert "query" in result.details
 
