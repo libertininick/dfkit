@@ -14,7 +14,6 @@ from dfkit.utils.exceptions import (
     ParseErrorDict,
     SQLBlacklistedCommandError,
     SQLColumnError,
-    SQLLintError,
     SQLSyntaxError,
     SQLTableError,
     SQLValidationError,
@@ -389,145 +388,6 @@ class TestSQLBlacklistedCommandError:
             assert "blacklist=" in repr_str, "Repr should include blacklist key"
 
 
-class TestSQLLintError:
-    """Tests for SQLLintError exception class."""
-
-    def test_sql_lint_error_inherits_from_validation_error(self) -> None:
-        """Verify SQLLintError can be caught as SQLValidationError.
-
-        SQLLintError should be a subclass of SQLValidationError, enabling
-        unified exception handling across all SQL validation error types.
-        """
-        query = "select * from t"
-        violations: list[dict[str, object]] = [
-            {"code": "LT02", "line_no": 1, "line_pos": 7, "description": "Expected single space before star."}
-        ]
-        error = SQLLintError("1 lint violation(s) could not be fixed", query=query, violations=violations)
-
-        with check:
-            assert isinstance(error, SQLValidationError), "Should be an instance of SQLValidationError"
-        with check:
-            assert isinstance(error, SQLLintError), "Should be an instance of SQLLintError"
-
-    def test_sql_lint_error_stores_violations(self) -> None:
-        """Verify SQLLintError stores message, query, and violations correctly.
-
-        All three key attributes should be accessible after construction:
-        the violations list, the query that failed linting, and the message.
-        """
-        query = "select id from users"
-        violations: list[dict[str, object]] = [
-            {"code": "CP01", "line_no": 1, "line_pos": 1, "description": "Keywords must be upper case."},
-            {"code": "LT01", "line_no": 1, "line_pos": 10, "description": "Trailing whitespace."},
-        ]
-        message = "2 lint violation(s) could not be fixed"
-
-        error = SQLLintError(message, query=query, violations=violations)
-
-        with check:
-            assert error.violations == violations, "Violations list should be stored and retrievable"
-        with check:
-            assert len(error.violations) == 2, "Violations list should contain two violations"
-        with check:
-            assert error.violations[0]["code"] == "CP01", "First violation code should match"
-        with check:
-            assert error.violations[1]["code"] == "LT01", "Second violation code should match"
-        with check:
-            assert error.query == query, "Query should be stored via inherited attribute"
-        with check:
-            assert str(error) == message, "Message should be accessible via str()"
-
-    def test_sql_lint_error_default_violations_empty_list(self) -> None:
-        """Verify SQLLintError defaults violations to empty list when not provided.
-
-        When no violations list is provided, the attribute should default to
-        an empty list rather than None for consistent iteration behavior.
-        """
-        error = SQLLintError("Lint error", query="SELECT 1")
-
-        with check:
-            assert error.violations == [], "Violations should default to empty list when not provided"
-
-    def test_sql_lint_error_explicit_none_violations_defaults_to_empty_list(self) -> None:
-        """Verify SQLLintError normalizes explicit violations=None to an empty list.
-
-        Passing violations=None explicitly (rather than omitting the kwarg) must
-        still produce an empty list on the attribute. This ensures callers that
-        forward an optional violations value do not accidentally store None and
-        break iteration-site code that expects a list.
-        """
-        # Arrange & Act
-        error = SQLLintError("Lint error", query="SELECT 1", violations=None)
-
-        # Assert
-        with check:
-            assert error.violations == [], "violations=None should be normalized to an empty list"
-
-    def test_sql_lint_error_stores_fixed_query_when_provided(self) -> None:
-        """Verify SQLLintError stores fixed_query when explicitly passed.
-
-        When the caller provides a fixed_query, it should be accessible via
-        the fixed_query attribute so callers can inspect the auto-fixed SQL
-        alongside the unfixable violations.
-        """
-        original_query = "select id from users"
-        fixed_query = "SELECT id FROM users\n"
-        violations: list[dict[str, object]] = [
-            {"code": "AM04", "line_no": 1, "line_pos": 1, "description": "Wildcard not allowed."}
-        ]
-
-        error = SQLLintError(
-            "1 lint violation(s) could not be fixed",
-            query=original_query,
-            fixed_query=fixed_query,
-            violations=violations,
-        )
-
-        with check:
-            assert error.fixed_query == fixed_query, "fixed_query should be stored and retrievable"
-        with check:
-            assert error.query == original_query, "original query attribute should remain unchanged"
-
-    def test_sql_lint_error_fixed_query_defaults_to_none(self) -> None:
-        """Verify SQLLintError defaults fixed_query to None when not provided.
-
-        When no fixed_query is supplied (e.g., when raised from the SQLBaseError
-        catch branch), fixed_query should default to None rather than raising an
-        AttributeError or storing a misleading empty string.
-        """
-        error = SQLLintError("Lint error", query="SELECT 1")
-
-        with check:
-            assert error.fixed_query is None, "fixed_query should default to None when not provided"
-
-    def test_sql_lint_error_repr(self) -> None:
-        """Verify SQLLintError repr includes class name, message, query, violations, and fixed_query.
-
-        The repr should include all key attributes for debugging purposes,
-        including the new fixed_query attribute.
-        """
-        query = "select * from t"
-        fixed_query = "SELECT *\nFROM t\n"
-        violations: list[dict[str, object]] = [
-            {"code": "CP01", "line_no": 1, "line_pos": 1, "description": "Keywords must be upper case."}
-        ]
-        message = "1 lint violation(s) could not be fixed"
-
-        error = SQLLintError(message, query=query, fixed_query=fixed_query, violations=violations)
-        repr_str = repr(error)
-
-        with check:
-            assert "SQLLintError" in repr_str, "Repr should include class name"
-        with check:
-            assert message in repr_str, "Repr should include message"
-        with check:
-            assert query in repr_str, "Repr should include query"
-        with check:
-            assert "violations=" in repr_str, "Repr should include violations key"
-        with check:
-            assert "fixed_query=" in repr_str, "Repr should include fixed_query key"
-
-
 class TestSQLColumnErrorAmbiguous:
     """Tests for SQLColumnError ambiguous column handling."""
 
@@ -686,7 +546,6 @@ class TestAllExceptionsStoreQuery:
             (SQLTableError, {"invalid_tables": ["tbl"]}),
             (SQLColumnError, {"invalid_columns": {"tbl": ["col"]}}),
             (SQLBlacklistedCommandError, {"command_type": "DELETE", "blacklist": {"DELETE", "DROP"}}),
-            (SQLLintError, {"violations": [{"code": "CP01", "line_no": 1, "line_pos": 1, "description": "test"}]}),
         ],
         ids=[
             "SQLValidationError",
@@ -694,7 +553,6 @@ class TestAllExceptionsStoreQuery:
             "SQLTableError",
             "SQLColumnError",
             "SQLBlacklistedCommandError",
-            "SQLLintError",
         ],
     )
     def test_all_exceptions_store_query(
@@ -738,7 +596,6 @@ class TestExceptionsCatchableByBaseClass:
             "table",
             "column",
             "blacklist",
-            "lint",
         ]
         for error_type in error_types:
             try:
@@ -750,7 +607,7 @@ class TestExceptionsCatchableByBaseClass:
                     assert e.query == "SELECT * FROM users", f"Query should be accessible on {type(e).__name__}"
 
         with check:
-            assert len(errors_caught) == 5, "All five exceptions should be caught"
+            assert len(errors_caught) == 4, "All four exceptions should be caught"
         with check:
             assert "SQLSyntaxError" in errors_caught, "SQLSyntaxError should be caught by base class"
         with check:
@@ -761,8 +618,6 @@ class TestExceptionsCatchableByBaseClass:
             assert "SQLBlacklistedCommandError" in errors_caught, (
                 "SQLBlacklistedCommandError should be caught by base class"
             )
-        with check:
-            assert "SQLLintError" in errors_caught, "SQLLintError should be caught by base class"
 
     def test_specific_exceptions_not_caught_by_siblings(self) -> None:
         """Verify that sibling exceptions do not catch each other.
@@ -777,11 +632,6 @@ class TestExceptionsCatchableByBaseClass:
         syntax_error = SQLSyntaxError(
             "Syntax error", query="bad sql", errors=[{"description": "parse failed", "line": 1}]
         )
-        lint_error = SQLLintError(
-            "Lint error",
-            query="select * from t",
-            violations=[{"code": "CP01", "line_no": 1, "line_pos": 1, "description": "Upper case keywords."}],
-        )
 
         with check:
             assert not isinstance(table_error, SQLSyntaxError), "SQLTableError should not be caught by SQLSyntaxError"
@@ -789,12 +639,6 @@ class TestExceptionsCatchableByBaseClass:
             assert not isinstance(column_error, SQLTableError), "SQLColumnError should not be caught by SQLTableError"
         with check:
             assert not isinstance(syntax_error, SQLColumnError), "SQLSyntaxError should not be caught by SQLColumnError"
-        with check:
-            assert not isinstance(lint_error, SQLSyntaxError), "SQLLintError should not be caught by SQLSyntaxError"
-        with check:
-            assert not isinstance(lint_error, SQLTableError), "SQLLintError should not be caught by SQLTableError"
-        with check:
-            assert not isinstance(lint_error, SQLColumnError), "SQLLintError should not be caught by SQLColumnError"
 
     @staticmethod
     def _simulate_exceptions(error_type: str) -> None:
@@ -806,7 +650,7 @@ class TestExceptionsCatchableByBaseClass:
 
         Args:
             error_type (str): The type of error to simulate. One of "syntax", "table",
-                "column", "blacklist", or "lint".
+                "column", or "blacklist".
 
         Raises:
             _build_simulated_exception: Always raises the exception returned by
@@ -823,7 +667,7 @@ def _build_simulated_exception(error_type: str) -> SQLValidationError:
 
     Args:
         error_type (str): The type of error to create. One of "syntax", "table",
-            "column", "blacklist", or "lint".
+            "column", or "blacklist".
 
     Returns:
         SQLValidationError: The constructed exception instance.
@@ -838,11 +682,6 @@ def _build_simulated_exception(error_type: str) -> SQLValidationError:
         "column": SQLColumnError("Column not found", query=query, invalid_columns={"users": ["id"]}),
         "blacklist": SQLBlacklistedCommandError(
             "Blacklisted command", query=query, command_type="DELETE", blacklist={"DELETE", "DROP"}
-        ),
-        "lint": SQLLintError(
-            "Lint violations found",
-            query=query,
-            violations=[{"code": "CP01", "line_no": 1, "line_pos": 1, "description": "Upper case keywords."}],
         ),
     }
     if error_type not in exceptions:
