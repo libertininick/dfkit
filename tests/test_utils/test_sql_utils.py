@@ -10,7 +10,6 @@ This module tests the SQL parsing and validation functions including:
 from __future__ import annotations
 
 import pytest
-import sqlfluff
 import sqlglot
 from pytest_check import check
 from sqlglot import exp
@@ -24,7 +23,6 @@ from dfkit.utils.exceptions import (
 )
 from dfkit.utils.sql_utils import (
     DESTRUCTIVE_COMMANDS,
-    LINT_RULES,
     _get_sql_command_type,
     _validate_sql_columns,
     _validate_sql_tables,
@@ -2041,21 +2039,3 @@ class TestValidateSQLEdgeCases:
 
 
 # endregion
-
-
-class TestLintRulesConstant:
-    """Tests for the LINT_RULES constant."""
-
-    def test_lint_rules_constant_structure_and_format(self) -> None:
-        """LINT_RULES constant must be a non-empty list of supported rule codes.
-
-        Verifies structural and content constraints on LINT_RULES:
-        - Contains exactly 39 rules.
-        - Every rule code is supported by SQLFluff
-        """
-        with check:
-            assert len(LINT_RULES) == 39, f"LINT_RULES should contain exactly 39 rules, got {len(LINT_RULES)}"
-        with check:
-            all_supported_rules = {r.code for r in sqlfluff.list_rules()}
-            unsupported_rules = LINT_RULES - all_supported_rules
-            assert not unsupported_rules, f"Found unsupported rules {unsupported_rules}"
