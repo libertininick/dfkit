@@ -565,7 +565,7 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("data", df)
         toolkit.register_dataframe("existing_result", pl.DataFrame({"b": [4, 5, 6]}))
 
-        query = f"SELECT * FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
+        query = f"SELECT a FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
 
         # Act - try to create result with existing name
         result = toolkit.execute_sql(query=query, result_name="existing_result")

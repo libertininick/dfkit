@@ -1918,8 +1918,13 @@ class TestValidateSQLAmbiguousColumns:
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
         # AL08 (reuse of alias 'id'), AL01 (implicit aliasing) and LT rules fire
-        with pytest.raises(SQLLintError):
+        with pytest.raises(SQLLintError) as exc_info:
             validate_sql(query, table_columns)
+
+        violations = exc_info.value.violations
+        violation_codes = {v["code"] for v in violations}
+        with check:
+            assert violation_codes - {"RF02"}, "Should have violations beyond RF02"
 
     def test_validate_sql_unambiguous_column_single_table_raises_lint_error(self) -> None:
         """Even a column unique to one table raises SQLLintError when query has multiple tables (RF02)."""
@@ -1981,7 +1986,11 @@ class TestValidateSQLLintIntegration:
         """Given unfixable SQL, SQLLintError should contain violation details."""
         with pytest.raises(SQLLintError) as exc_info:
             validate_sql("SELECT * FROM users", {"users": {"id", "name"}})
-        assert len(exc_info.value.violations) > 0
+
+        violations = exc_info.value.violations
+        violation_codes = {v["code"] for v in violations}
+        with check:
+            assert "AM04" in violation_codes, "SELECT * should trigger AM04 violation"
 
     def test_validate_sql_lint_then_column_validation_succeeds(self) -> None:
         """Given SQL with fixable lint issues and valid columns, both checks should pass."""
@@ -1993,11 +2002,11 @@ class TestValidateSQLLintIntegration:
         assert isinstance(result, exp.Expr)
 
     def test_validate_sql_lint_before_parse_error(self) -> None:
-        """Given SQL with lint violations, lint error should be raised before parse errors."""
-        # SELECT * has unfixable lint violations; even though it's valid SQL,
-        # the lint step runs first and raises SQLLintError
+        """Given SQL with both a lint violation and a parse error, lint error should take precedence."""
+        # Unclosed paren causes a parse error (PRS), but lint catches it first and raises SQLLintError
+        # rather than SQLSyntaxError, proving lint runs before parse validation
         with pytest.raises(SQLLintError):
-            validate_sql("SELECT * FROM users", {"users": {"id", "name"}})
+            validate_sql("SELECT id FROM (SELECT id FROM t", {"t": {"id"}})
 
 
 class TestValidateSQLErrorPrecedence:
@@ -2055,11 +2064,6 @@ class TestValidateSQLEdgeCases:
         query = "SELECT id, name FROM users WHERE id IN (SELECT orders.user_id FROM orders)"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "user_id"}}
         validate_sql(query, table_columns)
-
-    def test_validate_sql_star_select_raises_lint_error(self) -> None:
-        """SELECT * raises SQLLintError due to AM04 (unknown number of result columns)."""
-        with pytest.raises(SQLLintError):
-            validate_sql("SELECT * FROM users", {"users": {"id", "name", "email"}})
 
 
 # endregion
