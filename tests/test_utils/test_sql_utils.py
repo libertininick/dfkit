@@ -1712,6 +1712,68 @@ class TestValidateSQLSuccessCases:
         # Act / Assert — no exception should be raised
         validate_sql(query, table_columns)
 
+    def test_validate_sql_alias_shadows_real_column_name_succeeds(self) -> None:
+        """SELECT alias that shares a name with a real column should not raise.
+
+        When a SELECT alias has the same name as a real table column (e.g.,
+        ``ROUND(age, 0) AS age``), an unqualified reference to that name in
+        ORDER BY should match the alias and be skipped rather than validated
+        against the schema.
+        """
+        # Arrange
+        query = """
+            SELECT ROUND(age, 0) AS age
+            FROM patients
+            ORDER BY age
+        """
+        table_columns = {"patients": {"age", "name", "bmi", "sex"}}
+
+        # Act / Assert — no exception should be raised
+        validate_sql(query, table_columns)
+
+    def test_validate_sql_alias_used_in_group_by_succeeds(self) -> None:
+        """SELECT alias referenced in GROUP BY should not raise.
+
+        An alias defined in the SELECT clause (e.g., ``order_year``) used
+        directly in a GROUP BY clause should be treated as a valid alias
+        reference and skipped during column validation.
+        """
+        # Arrange
+        query = """
+            SELECT
+                EXTRACT(YEAR FROM order_date) AS order_year,
+                COUNT(*) AS cnt
+            FROM orders
+            GROUP BY order_year
+        """
+        table_columns = {"orders": {"id", "user_id", "order_date", "total"}}
+
+        # Act / Assert — no exception should be raised
+        validate_sql(query, table_columns)
+
+    def test_validate_sql_multiple_aliases_one_used_in_order_by_succeeds(self) -> None:
+        """Multiple SELECT aliases with only one in ORDER BY alongside a real column should not raise.
+
+        When a query defines several SELECT aliases but only one appears in
+        ORDER BY next to a real column name, the alias reference should be
+        skipped and the real column should validate successfully against the
+        schema.
+        """
+        # Arrange
+        query = """
+            SELECT
+                name,
+                ROUND(bmi, 1) AS bmi_rounded,
+                COUNT(*) AS patient_count
+            FROM patients
+            GROUP BY name, ROUND(bmi, 1)
+            ORDER BY name, bmi_rounded
+        """
+        table_columns = {"patients": {"name", "bmi", "age", "sex"}}
+
+        # Act / Assert — no exception should be raised
+        validate_sql(query, table_columns)
+
     def test_validate_sql_with_aggregate_succeeds(self) -> None:
         """Valid query with aggregate functions should not raise."""
         validate_sql("SELECT COUNT(id) FROM users", {"users": {"id", "name", "email"}})
