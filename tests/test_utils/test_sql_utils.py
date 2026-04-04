@@ -1884,7 +1884,7 @@ class TestValidateSQLTableErrors:
             validate_sql("SELECT 1", {"users": {"id", "name"}})
 
     def test_validate_sql_table_error_contains_query(self) -> None:
-        """SQLTableError should contain the query (possibly auto-fixed with trailing newline)."""
+        """SQLTableError should contain the query (sqlfluff.fix() appends a trailing newline)."""
         query = "SELECT id FROM bad_table"
         with pytest.raises(SQLTableError) as exc_info:
             validate_sql(query, {"users": {"id", "name"}})
@@ -2057,8 +2057,8 @@ class TestValidateSQLLintIntegration:
         assert isinstance(result, exp.Expr)
 
     def test_validate_sql_passes_through_with_unfixable_lint_rules(self) -> None:
-        """When sqlfluff.fix() raises SQLBaseError, validate_sql continues with the original query."""
-        query = "SELECT * FROM users;"  # Query produces an unknown number of result columns
+        """When a lint rule is not auto-fixable, validate_sql continues with the original query."""
+        query = "SELECT * FROM users;"  # AM04 is not auto-fixable
         result = validate_sql(query, {"users": {"id", "name"}}, lint_rules=["AM04"])  # can't fix AM04
         expected_expression = parse_sql(query)
 

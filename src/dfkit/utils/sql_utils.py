@@ -213,7 +213,7 @@ def validate_sql(
         blacklist (Collection[str] | None): Optional collection of SQL command
             types to block (e.g., {"DELETE", "DROP"}). Use `DESTRUCTIVE_COMMANDS`
             for a pre-defined set. Defaults to None (no blacklist checking).
-        lint_rules (Collection[str] | None): Optional collection of SQLFLuff lint
+        lint_rules (Collection[str] | None): Optional collection of SQLFluff lint
             rules to standardize the query. If None, defaults to `LINT_RULES`.
 
     Returns:
