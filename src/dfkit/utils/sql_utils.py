@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 from collections import defaultdict
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
@@ -84,9 +85,6 @@ LINT_RULES: Final[frozenset[str]] = frozenset({
     "ST09",
     "ST12",
 })
-
-# ALL supported lint rules by SQLFluff
-_SUPPORTED_RULES: Final[frozenset[str]] = frozenset({r.code for r in sqlfluff.list_rules()})
 
 # Mapping of sqlglot expression types to SQL command type strings for blacklist checking.
 # Set operations (Union, Intersect, Except) are considered SELECT queries.
@@ -281,7 +279,7 @@ def validate_sql(
         query = sqlfluff.fix(
             query,
             dialect="ansi" if dialect is None else dialect,
-            exclude_rules=list(_SUPPORTED_RULES - set(lint_rules)),
+            exclude_rules=list(_supported_lint_rules() - set(lint_rules)),
         )
 
     expression = parse_sql(query, dialect=dialect, blacklist=blacklist)
@@ -327,6 +325,17 @@ def extract_table_names(expression: exp.Expr) -> list[str]:
 
 
 # region Helpers
+
+
+# ALL supported lint rules by SQLFluff
+@functools.cache
+def _supported_lint_rules() -> frozenset[str]:
+    """Return all supported SQLFluff lint rule codes.
+
+    Returns:
+        frozenset[str]: Frozenset of all rule code strings supported by SQLFluff.
+    """
+    return frozenset(r.code for r in sqlfluff.list_rules())
 
 
 @dataclass(frozen=True)
