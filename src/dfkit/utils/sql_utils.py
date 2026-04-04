@@ -542,7 +542,9 @@ def _validate_column_in_scope(
     """Validate a single column reference against the schema.
 
     Unqualified columns that match a SELECT alias (e.g., `ORDER BY alias`) are
-    skipped so that alias references do not produce false-positive errors.
+    skipped so that alias references do not produce false-positive errors. Columns
+    inside a WHERE clause are excluded from this skip, since WHERE clauses cannot
+    reference SELECT aliases in standard SQL.
 
     Args:
         column (exp.Column): The column expression to validate.
@@ -556,8 +558,9 @@ def _validate_column_in_scope(
     col_name = column.name.lower()
     table_alias = column.table.lower() if column.table else ""
 
-    # Skip validation for unqualified columns that reference SELECT aliases
-    if not table_alias and col_name in select_aliases:
+    # Skip validation for unqualified columns that reference SELECT aliases,
+    # but not for columns inside a WHERE clause (WHERE cannot use SELECT aliases).
+    if not table_alias and col_name in select_aliases and not column.find_ancestor(exp.Where):
         return _ColumnValidationResult(col_name)
 
     if table_alias:

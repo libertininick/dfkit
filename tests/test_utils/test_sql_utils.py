@@ -1774,6 +1774,22 @@ class TestValidateSQLSuccessCases:
         # Act / Assert — no exception should be raised
         validate_sql(query, table_columns)
 
+    def test_validate_sql_where_clause_referencing_select_alias_raises(self) -> None:
+        """WHERE clause referencing a SELECT alias that is not a real column should raise.
+
+        Unlike ORDER BY, GROUP BY, and HAVING, a WHERE clause cannot reference
+        SELECT aliases in standard SQL. When a WHERE clause uses a name that
+        matches a SELECT alias but does not correspond to a real column in the
+        schema, `validate_sql` should raise `SQLColumnError`.
+        """
+        # Arrange
+        query = "SELECT price * quantity AS total FROM orders WHERE total > 100"
+        table_columns = {"orders": {"id", "price", "quantity"}}
+
+        # Act / Assert
+        with pytest.raises(SQLColumnError):
+            validate_sql(query, table_columns)
+
     def test_validate_sql_with_aggregate_succeeds(self) -> None:
         """Valid query with aggregate functions should not raise."""
         validate_sql("SELECT COUNT(id) FROM users", {"users": {"id", "name", "email"}})
