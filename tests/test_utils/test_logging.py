@@ -256,7 +256,7 @@ def test_toolkit_function_logs_tool_call_entry_and_result(
     call_args = dict(args_dict)
     if function_name == "execute_sql":
         # SQL injection is safe here: table name comes from controlled ref.id
-        call_args["query"] = f"SELECT * FROM {ref.id}"  # noqa: S608
+        call_args["query"] = f"SELECT price, quantity FROM {ref.id}"  # noqa: S608
 
     # Act - call the toolkit function by name using getattr
     getattr(toolkit, function_name)(**call_args)
@@ -537,7 +537,7 @@ class TestDataFrameRegistrationLogging:
         # Act - perform operations that should add structured fields
         ref = toolkit.register_dataframe("customers", df)
         # SQL injection is safe here: table name comes from controlled ref.id
-        query = f"SELECT * FROM {ref.id}"  # noqa: S608
+        query = f"SELECT customer_id, spend FROM {ref.id}"  # noqa: S608
         toolkit.execute_sql(query=query, result_name="all_customers")
 
         # Assert - check for structured fields in extra

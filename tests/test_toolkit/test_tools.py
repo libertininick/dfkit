@@ -458,7 +458,7 @@ class TestExecuteSQL:
         # Arrange
         df = pl.DataFrame({"id": [1, 2, 3, 4, 5], "amount": [100, 200, 150, 300, 250]})
         ref = toolkit.register_dataframe("sales", df)
-        query = f"SELECT * FROM {ref.id} WHERE amount > 150"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
+        query = f"SELECT id, amount FROM {ref.id}\nWHERE amount > 150"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
 
         # Act
         result = toolkit.execute_sql(
@@ -565,7 +565,7 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("data", df)
         toolkit.register_dataframe("existing_result", pl.DataFrame({"b": [4, 5, 6]}))
 
-        query = f"SELECT * FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
+        query = f"SELECT a FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
 
         # Act - try to create result with existing name
         result = toolkit.execute_sql(query=query, result_name="existing_result")
@@ -591,7 +591,7 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("data", df)
 
         # Act - intentionally malformed SQL (missing closing parenthesis)
-        bad_query = f"SELECT * FROM (SELECT id FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
+        bad_query = f"SELECT id FROM (SELECT id FROM {ref.id}"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=bad_query, result_name="broken")
 
         # Assert
@@ -615,7 +615,7 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("known_table", df)
 
         # Act - query references non-existent table
-        bad_query = "SELECT * FROM unknown_table_xyz"
+        bad_query = "SELECT id FROM unknown_table_xyz"
         result = toolkit.execute_sql(query=bad_query, result_name="result")
 
         # Assert
@@ -761,7 +761,7 @@ class TestExecuteSQL:
             assert isinstance(result1, DataFrameReference)
 
         # Act - second query: filter the aggregated result
-        query2 = f"SELECT * FROM {result1.id} WHERE total > 50"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
+        query2 = f"SELECT category, total FROM {result1.id}\nWHERE total > 50"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result2 = toolkit.execute_sql(query=query2, result_name="high_totals")
 
         # Assert
@@ -815,16 +815,15 @@ class TestExecuteSQL:
         scores = pl.DataFrame({"student": ["Alice", "Bob", "Charlie", "Diana"], "score": [85, 92, 78, 95]})
         ref = toolkit.register_dataframe("scores", scores)
 
-        # Act - use CTE to calculate and filter by average
-        query = f"""
-            WITH avg_score AS (
-                SELECT AVG(score) AS avg FROM {ref.id}
-            )
-            SELECT student, score
-            FROM {ref.id}
-            WHERE score >= 90
-            ORDER BY score DESC
-        """  # noqa: S608 - ref.id is a validated DataFrameId, not user input
+        # Act - use CTE to pre-filter high scorers, then select from the CTE
+        query = f"""WITH high_scores AS (
+    SELECT student, score
+    FROM {ref.id}
+    WHERE score >= 90
+)
+SELECT student, score
+FROM high_scores
+ORDER BY score DESC"""  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=query, result_name="high_scorers")
 
         # Assert
@@ -846,7 +845,7 @@ class TestExecuteSQL:
         ref = toolkit.register_dataframe("data", df)
 
         # Act - query that matches nothing
-        query = f"SELECT * FROM {ref.id} WHERE status = 'inactive'"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
+        query = f"SELECT id, status FROM {ref.id}\nWHERE status = 'inactive'"  # noqa: S608 - ref.id is a validated DataFrameId, not user input
         result = toolkit.execute_sql(query=query, result_name="no_matches")
 
         # Assert
@@ -900,7 +899,7 @@ class TestExecuteSQL:
         tools = toolkit.get_core_tools()
         tool_execute_sql = next(t for t in tools if t.name == "execute_sql")
         result = tool_execute_sql.invoke({  # ty: ignore[missing-typed-dict-key]
-            "query": f"SELECT * FROM {ref.id} WHERE amount > 150",  # noqa: S608 - ref.id is a validated DataFrameId, not user input  # ty: ignore[invalid-key]
+            "query": f"SELECT id, amount FROM {ref.id}\nWHERE amount > 150",  # noqa: S608 - ref.id is a validated DataFrameId, not user input  # ty: ignore[invalid-key]
             "result_name": "high_sales",  # ty: ignore[invalid-key]
             "result_description": "Sales over $150",  # ty: ignore[invalid-key]
         })

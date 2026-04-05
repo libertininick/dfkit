@@ -1,15 +1,14 @@
-"""SQL utilities for parsing and validating SQL queries.
-
-This module provides functions for validating SQL syntax using SQLglot.
-"""
+"""SQL utilities for linting, parsing, and validating SQL queries."""
 
 from __future__ import annotations
 
+import functools
 from collections import defaultdict
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from typing import Final
 
+import sqlfluff
 import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer.scope import Scope, build_scope, find_all_in_scope
@@ -22,7 +21,7 @@ from dfkit.utils.exceptions import (
     SQLTableError,
 )
 
-__all__ = ["DESTRUCTIVE_COMMANDS", "extract_table_names", "parse_sql", "validate_sql"]
+__all__ = ["DESTRUCTIVE_COMMANDS", "LINT_RULES", "extract_table_names", "parse_sql", "validate_sql"]
 
 
 # region Constants
@@ -37,6 +36,54 @@ DESTRUCTIVE_COMMANDS: Final[frozenset[str]] = frozenset({
     "TRUNCATE",
     "ALTER",
     "CREATE",
+})
+
+# Auto-fixable, dialect-generic rules only. Semantic checks are handled by sqlglot.
+LINT_RULES: Final[frozenset[str]] = frozenset({
+    # Aliasing
+    "AL05",
+    # Capitalization
+    "CP01",
+    "CP02",
+    "CP03",
+    "CP04",
+    "CP05",
+    # Convention
+    "CV01",
+    "CV02",
+    "CV03",
+    "CV04",
+    "CV05",
+    "CV06",
+    "CV07",
+    "CV10",
+    "CV11",
+    "CV12",
+    # Layout
+    "LT01",
+    "LT02",
+    "LT03",
+    "LT04",
+    "LT05",
+    "LT06",
+    "LT07",
+    "LT08",
+    "LT09",
+    "LT10",
+    "LT11",
+    "LT12",
+    "LT13",
+    "LT14",
+    "LT15",
+    # Structure
+    "ST02",
+    "ST04",
+    "ST05",
+    "ST06",
+    "ST07",
+    "ST08",
+    "ST09",
+    "ST12",
 })
 
 # Mapping of sqlglot expression types to SQL command type strings for blacklist checking.
@@ -55,58 +102,11 @@ _EXPRESSION_TYPE_MAP: Final[dict[type[exp.Expr], str]] = {
     exp.Except: "SELECT",
 }
 
-# endregion
-
-
-# region Data Classes
-
-
-@dataclass(frozen=True)
-class _ColumnValidationResult:
-    """Result of validating a single column reference.
-
-    Attributes:
-        col_name (str): The name of the column being validated.
-        invalid_table (str | None): Table name if column is invalid, None otherwise.
-        ambiguous_tables (list[str] | None): Tables containing ambiguous column, None otherwise.
-        not_found_in_tables (list[str] | None): Tables searched when column not found in any, None otherwise.
-    """
-
-    col_name: str
-    invalid_table: str | None = None
-    ambiguous_tables: list[str] | None = None
-    not_found_in_tables: list[str] | None = None
-
-
-@dataclass
-class _ColumnErrors:
-    """Aggregated column validation errors from a SQL expression.
-
-    Attributes:
-        invalid_columns (dict[str, list[str]]): Mapping of table names to lists of
-            invalid column names that don't exist in that table.
-        ambiguous_columns (dict[str, list[str]]): Mapping of column names to lists of
-            table names where the column exists but the reference is ambiguous.
-        not_found_columns (dict[str, list[str]]): Mapping of column names to lists of
-            table names that were searched when the column was not found in any table.
-    """
-
-    invalid_columns: dict[str, list[str]]
-    ambiguous_columns: dict[str, list[str]]
-    not_found_columns: dict[str, list[str]]
-
-    @property
-    def has_errors(self) -> bool:
-        """Return True if any column errors were detected."""
-        return bool(self.invalid_columns or self.ambiguous_columns or self.not_found_columns)
-
 
 # endregion
 
 
 # region Public Interface
-
-
 def parse_sql(query: str, *, dialect: str | None = None, blacklist: Collection[str] | None = None) -> exp.Expr:
     """Parses the query using SQLglot to detect syntax errors and returns the parsed expression.
 
@@ -193,17 +193,15 @@ def validate_sql(
     *,
     dialect: str | None = None,
     blacklist: Collection[str] | None = None,
+    lint_rules: Collection[str] | None = None,
 ) -> exp.Expr:
     """Validate a SQL query through comprehensive multi-step validation.
 
-    Orchestrates full SQL validation by running parsing, table validation,
-    and column validation in sequence. This provides a single entry point
-    for complete SQL validation in the DataFrame toolkit.
-
     The validation steps are:
-    1. Parse the query using `parse_sql()` with optional blacklist
-    2. Validate table references
-    3. Validate column references
+    1. Best-effort style fix via `sqlfluff.fix()` (failures are silently ignored)
+    2. Parse the query using `parse_sql()` with optional blacklist
+    3. Validate table references
+    4. Validate column references
 
     Args:
         query (str): The SQL query string to validate.
@@ -215,6 +213,8 @@ def validate_sql(
         blacklist (Collection[str] | None): Optional collection of SQL command
             types to block (e.g., {"DELETE", "DROP"}). Use `DESTRUCTIVE_COMMANDS`
             for a pre-defined set. Defaults to None (no blacklist checking).
+        lint_rules (Collection[str] | None): Optional collection of SQLFluff lint
+            rules to standardize the query. If None, defaults to `LINT_RULES`.
 
     Returns:
         exp.Expr: The parsed and validated SQL expression.
@@ -259,8 +259,8 @@ def validate_sql(
         ...         {"users": {"id", "name"}, "orders": {"id", "total"}},
         ...     )
         ... except SQLColumnError as e:
-        ...     print(e.format_details())
-        Column "id" is ambiguous. Found in tables: orders, users. Please qualify as "orders.id" or "users.id".
+        ...     print(type(e).__name__)
+        SQLColumnError
 
         Blocking destructive commands:
         >>> try:
@@ -273,14 +273,21 @@ def validate_sql(
         ...     print(f"Blocked: {e.command_type}")
         Blocked: DELETE
     """  # noqa: DOC502 # We want to explicitly document exceptions raised by helpers.
-    # Step 1: Parse the query
+    if lint_rules is None:
+        lint_rules = LINT_RULES
+    if lint_rules:
+        query = sqlfluff.fix(
+            query,
+            dialect="ansi" if dialect is None else dialect,
+            exclude_rules=list(_supported_lint_rules() - set(lint_rules)),
+            fix_even_unparsable=False,
+        )
+
     expression = parse_sql(query, dialect=dialect, blacklist=blacklist)
 
-    # Step 2: Validate table references
-    _validate_sql_tables(expression, valid_tables=table_columns.keys(), query_str=query)
+    _validate_sql_tables(expression, valid_tables=table_columns.keys(), query=query)
 
-    # Step 3: Validate column references (includes ambiguity detection)
-    _validate_sql_columns(expression, table_columns, query_str=query)
+    _validate_sql_columns(expression, table_columns, query=query)
 
     return expression
 
@@ -321,6 +328,57 @@ def extract_table_names(expression: exp.Expr) -> list[str]:
 # region Helpers
 
 
+# ALL supported lint rules by SQLFluff
+@functools.cache
+def _supported_lint_rules() -> frozenset[str]:
+    """Return all supported SQLFluff lint rule codes.
+
+    Returns:
+        frozenset[str]: Frozenset of all rule code strings supported by SQLFluff.
+    """
+    return frozenset(r.code for r in sqlfluff.list_rules())
+
+
+@dataclass(frozen=True)
+class _ColumnValidationResult:
+    """Result of validating a single column reference.
+
+    Attributes:
+        col_name (str): The name of the column being validated.
+        invalid_table (str | None): Table name if column is invalid, None otherwise.
+        ambiguous_tables (list[str] | None): Tables containing ambiguous column, None otherwise.
+        not_found_in_tables (list[str] | None): Tables searched when column not found in any, None otherwise.
+    """
+
+    col_name: str
+    invalid_table: str | None = None
+    ambiguous_tables: list[str] | None = None
+    not_found_in_tables: list[str] | None = None
+
+
+@dataclass
+class _ColumnErrors:
+    """Aggregated column validation errors from a SQL expression.
+
+    Attributes:
+        invalid_columns (dict[str, list[str]]): Mapping of table names to lists of
+            invalid column names that don't exist in that table.
+        ambiguous_columns (dict[str, list[str]]): Mapping of column names to lists of
+            table names where the column exists but the reference is ambiguous.
+        not_found_columns (dict[str, list[str]]): Mapping of column names to lists of
+            table names that were searched when the column was not found in any table.
+    """
+
+    invalid_columns: dict[str, list[str]]
+    ambiguous_columns: dict[str, list[str]]
+    not_found_columns: dict[str, list[str]]
+
+    @property
+    def has_errors(self) -> bool:
+        """Return True if any column errors were detected."""
+        return bool(self.invalid_columns or self.ambiguous_columns or self.not_found_columns)
+
+
 def _get_sql_command_type(expression: exp.Expr) -> str | None:
     """Map a sqlglot expression to its SQL command type string.
 
@@ -334,7 +392,7 @@ def _get_sql_command_type(expression: exp.Expr) -> str | None:
     return _EXPRESSION_TYPE_MAP.get(type(expression))
 
 
-def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], query_str: str) -> None:
+def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], query: str) -> None:
     """Validate that a SQL expression only references allowed tables.
 
     Extracts all table references using scope analysis to correctly distinguish
@@ -345,7 +403,7 @@ def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], qu
         expression (exp.Expr): A pre-parsed sqlglot Expression.
         valid_tables (Collection[str]): Collection of allowed table names. Matching is
             case-insensitive.
-        query_str (str): The original query string for error messages.
+        query (str): The original query string for error messages.
 
     Raises:
         SQLTableError: If no valid tables are referenced, or if unknown tables
@@ -356,7 +414,7 @@ def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], qu
     if not referenced_table_names:
         raise SQLTableError(
             message="Query does not reference any tables. At least one table from valid_tables must be referenced.",
-            query=query_str,
+            query=query,
             invalid_tables=[],
         )
 
@@ -366,7 +424,7 @@ def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], qu
     if invalid_tables:
         raise SQLTableError(
             message=f"Query references invalid tables: {invalid_tables}",
-            query=query_str,
+            query=query,
             invalid_tables=invalid_tables,
         )
 
@@ -374,7 +432,7 @@ def _validate_sql_tables(expression: exp.Expr, valid_tables: Collection[str], qu
 def _validate_sql_columns(
     expression: exp.Expr,
     table_columns: dict[str, set[str]],
-    query_str: str,
+    query: str,
 ) -> None:
     """Validate that a SQL expression only references valid columns for base tables.
 
@@ -393,7 +451,7 @@ def _validate_sql_columns(
         table_columns (dict[str, set[str]]): Mapping of table names to their
             valid column names. Matching is case-insensitive for both table
             names and column names.
-        query_str (str): The original query string for error messages.
+        query (str): The original query string for error messages.
 
     Raises:
         SQLColumnError: If invalid or ambiguous columns are referenced. The
@@ -411,7 +469,7 @@ def _validate_sql_columns(
             message=_build_column_error_message(
                 errors.invalid_columns, errors.ambiguous_columns, errors.not_found_columns, table_columns
             ),
-            query=query_str,
+            query=query,
             invalid_columns=errors.invalid_columns,
             ambiguous_columns=errors.ambiguous_columns,
             not_found_columns=errors.not_found_columns,
@@ -478,27 +536,42 @@ def _validate_column_references(
 
     for scope in root.traverse():
         alias_to_table = _build_alias_to_table_map(scope)
+        select_aliases: set[str] = set()
+        if isinstance(scope.expression, exp.Query):
+            select_aliases = {s.alias_or_name.lower() for s in scope.expression.selects if s.alias}
         for column in find_all_in_scope(scope.expression, exp.Column):
-            yield _validate_column_in_scope(column, alias_to_table, normalized_schema)
+            yield _validate_column_in_scope(column, alias_to_table, normalized_schema, select_aliases)
 
 
 def _validate_column_in_scope(
     column: exp.Column,
     alias_to_table: dict[str, str],
     normalized_schema: dict[str, set[str]],
+    select_aliases: set[str],
 ) -> _ColumnValidationResult:
     """Validate a single column reference against the schema.
+
+    Unqualified columns that match a SELECT alias (e.g., `ORDER BY alias`) are
+    skipped so that alias references do not produce false-positive errors. Columns
+    inside a WHERE clause are excluded from this skip, since WHERE clauses cannot
+    reference SELECT aliases in standard SQL.
 
     Args:
         column (exp.Column): The column expression to validate.
         alias_to_table (dict[str, str]): Mapping from alias to base table name.
         normalized_schema (dict[str, set[str]]): Lowercase schema mapping table names to column sets.
+        select_aliases (set[str]): Lowercase aliases defined in the SELECT clause of the current scope.
 
     Returns:
         _ColumnValidationResult: Result indicating if the column is invalid or ambiguous.
     """
     col_name = column.name.lower()
     table_alias = column.table.lower() if column.table else ""
+
+    # Skip validation for unqualified columns that reference SELECT aliases,
+    # but not for columns inside a WHERE clause (WHERE cannot use SELECT aliases).
+    if not table_alias and col_name in select_aliases and not column.find_ancestor(exp.Where):
+        return _ColumnValidationResult(col_name)
 
     if table_alias:
         return _check_qualified_column(col_name, table_alias, alias_to_table, normalized_schema)

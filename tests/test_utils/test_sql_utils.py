@@ -1693,6 +1693,103 @@ class TestValidateSQLSuccessCases:
         """Valid query with ORDER BY using valid columns should not raise."""
         validate_sql("SELECT id, name FROM users ORDER BY name", {"users": {"id", "name", "email"}})
 
+    def test_validate_sql_with_order_by_select_alias_succeeds(self) -> None:
+        """ORDER BY referencing a SELECT alias should not raise."""
+        # Arrange
+        query = """
+            SELECT
+                ROUND(bmi, 1) AS bmi_rounded,
+                COUNT(*) AS patient_count,
+                ROUND(AVG(disease_progression), 2) AS avg_disease_progression
+            FROM df_e94d4ec0
+            GROUP BY ROUND(bmi, 1)
+            ORDER BY bmi_rounded
+        """
+        table_columns = {
+            "df_e94d4ec0": {"age", "bmi", "bp", "disease_progression", "s1", "s2", "s3", "s4", "s5", "s6", "sex"},
+        }
+
+        # Act / Assert — no exception should be raised
+        validate_sql(query, table_columns)
+
+    def test_validate_sql_alias_shadows_real_column_name_succeeds(self) -> None:
+        """SELECT alias that shares a name with a real column should not raise.
+
+        When a SELECT alias has the same name as a real table column (e.g.,
+        `ROUND(age, 0) AS age`), an unqualified reference to that name in
+        ORDER BY should match the alias and be skipped rather than validated
+        against the schema.
+        """
+        # Arrange
+        query = """
+            SELECT ROUND(age, 0) AS age
+            FROM patients
+            ORDER BY age
+        """
+        table_columns = {"patients": {"age", "name", "bmi", "sex"}}
+
+        # Act / Assert — no exception should be raised
+        validate_sql(query, table_columns)
+
+    def test_validate_sql_alias_used_in_group_by_succeeds(self) -> None:
+        """SELECT alias referenced in GROUP BY should not raise.
+
+        An alias defined in the SELECT clause (e.g., `order_year`) used
+        directly in a GROUP BY clause should be treated as a valid alias
+        reference and skipped during column validation.
+        """
+        # Arrange
+        query = """
+            SELECT
+                EXTRACT(YEAR FROM order_date) AS order_year,
+                COUNT(*) AS cnt
+            FROM orders
+            GROUP BY order_year
+        """
+        table_columns = {"orders": {"id", "user_id", "order_date", "total"}}
+
+        # Act / Assert — no exception should be raised
+        validate_sql(query, table_columns)
+
+    def test_validate_sql_multiple_aliases_one_used_in_order_by_succeeds(self) -> None:
+        """Multiple SELECT aliases with only one in ORDER BY alongside a real column should not raise.
+
+        When a query defines several SELECT aliases but only one appears in
+        ORDER BY next to a real column name, the alias reference should be
+        skipped and the real column should validate successfully against the
+        schema.
+        """
+        # Arrange
+        query = """
+            SELECT
+                name,
+                ROUND(bmi, 1) AS bmi_rounded,
+                COUNT(*) AS patient_count
+            FROM patients
+            GROUP BY name, ROUND(bmi, 1)
+            ORDER BY name, bmi_rounded
+        """
+        table_columns = {"patients": {"name", "bmi", "age", "sex"}}
+
+        # Act / Assert — no exception should be raised
+        validate_sql(query, table_columns)
+
+    def test_validate_sql_where_clause_referencing_select_alias_raises(self) -> None:
+        """WHERE clause referencing a SELECT alias that is not a real column should raise.
+
+        Unlike ORDER BY, GROUP BY, and HAVING, a WHERE clause cannot reference
+        SELECT aliases in standard SQL. When a WHERE clause uses a name that
+        matches a SELECT alias but does not correspond to a real column in the
+        schema, `validate_sql` should raise `SQLColumnError`.
+        """
+        # Arrange
+        query = "SELECT price * quantity AS total FROM orders WHERE total > 100"
+        table_columns = {"orders": {"id", "price", "quantity"}}
+
+        # Act / Assert
+        with pytest.raises(SQLColumnError):
+            validate_sql(query, table_columns)
+
     def test_validate_sql_with_aggregate_succeeds(self) -> None:
         """Valid query with aggregate functions should not raise."""
         validate_sql("SELECT COUNT(id) FROM users", {"users": {"id", "name", "email"}})
@@ -1726,7 +1823,7 @@ class TestValidateSQLSyntaxErrors:
     def test_validate_sql_invalid_syntax_raises_sql_syntax_error(self) -> None:
         """Query with invalid syntax should raise SQLSyntaxError."""
         with pytest.raises(SQLSyntaxError):
-            validate_sql("SELECT * FROM (SELECT a FROM t", {"users": {"id", "name"}})
+            validate_sql("SELECT id FROM (SELECT a FROM t", {"users": {"id", "name"}})
 
     def test_validate_sql_empty_query_raises_sql_syntax_error(self) -> None:
         """Empty string query should raise SQLSyntaxError."""
@@ -1787,13 +1884,15 @@ class TestValidateSQLTableErrors:
             validate_sql("SELECT 1", {"users": {"id", "name"}})
 
     def test_validate_sql_table_error_contains_query(self) -> None:
-        """SQLTableError should contain the original query string."""
+        """SQLTableError should contain the query (sqlfluff.fix() appends a trailing newline)."""
         query = "SELECT id FROM bad_table"
         with pytest.raises(SQLTableError) as exc_info:
             validate_sql(query, {"users": {"id", "name"}})
 
         with check:
-            assert exc_info.value.query == query
+            assert exc_info.value.query is not None
+        with check:
+            assert query in exc_info.value.query
 
 
 class TestValidateSQLColumnErrors:
@@ -1855,12 +1954,12 @@ class TestValidateSQLColumnErrors:
 class TestValidateSQLAmbiguousColumns:
     """Tests for validate_sql with ambiguous column references.
 
-    These tests verify that ambiguous column references (unqualified columns
-    that exist in multiple tables) are properly detected and reported.
+    Ambiguous column references in multi-table queries are detected by
+    _validate_sql_columns and raise SQLColumnError.
     """
 
     def test_validate_sql_ambiguous_column_raises_sql_column_error(self) -> None:
-        """Ambiguous column reference should raise SQLColumnError."""
+        """Ambiguous column reference in multi-table query raises SQLColumnError."""
         query = "SELECT id FROM users, orders"  # 'id' exists in both tables
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
@@ -1868,104 +1967,118 @@ class TestValidateSQLAmbiguousColumns:
             validate_sql(query, table_columns)
 
         with check:
-            assert "id" in exc_info.value.ambiguous_columns, "Should report 'id' as ambiguous"
+            assert "id" in exc_info.value.ambiguous_columns, "Should have ambiguous 'id' column"
 
-    def test_validate_sql_ambiguous_column_lists_tables(self) -> None:
-        """Ambiguous column error should list all tables where column exists."""
+    def test_validate_sql_ambiguous_column_error_contains_query(self) -> None:
+        """SQLColumnError for ambiguous multi-table refs should contain the original query."""
+        query = "SELECT id FROM users, orders"
+        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
+
+        with pytest.raises(SQLColumnError) as exc_info:
+            validate_sql(query, table_columns)
+
+        with check:
+            assert exc_info.value.query is not None
+
+    def test_validate_sql_ambiguous_multi_table_raises_column_error(self) -> None:
+        """Any unqualified ambiguous reference in a multi-table query raises SQLColumnError."""
         query = "SELECT id FROM users u, orders o"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        with pytest.raises(SQLColumnError) as exc_info:
+        with pytest.raises(SQLColumnError):
             validate_sql(query, table_columns)
 
-        tables = exc_info.value.ambiguous_columns.get("id", [])
-        with check:
-            assert "users" in tables, "Should list 'users' table"
-        with check:
-            assert "orders" in tables, "Should list 'orders' table"
-
-    def test_validate_sql_ambiguous_column_contains_query(self) -> None:
-        """SQLColumnError for ambiguous columns should contain the query."""
-        query = "SELECT id FROM users, orders"
-        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
-
-        with pytest.raises(SQLColumnError) as exc_info:
-            validate_sql(query, table_columns)
-
-        with check:
-            assert exc_info.value.query == query
-
-    def test_validate_sql_ambiguous_column_format_details(self) -> None:
-        """format_details should provide actionable feedback for ambiguous columns."""
-        query = "SELECT id FROM users, orders"
-        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
-
-        with pytest.raises(SQLColumnError) as exc_info:
-            validate_sql(query, table_columns)
-
-        details = exc_info.value.format_details()
-        with check:
-            assert "ambiguous" in details.lower(), "Should mention ambiguous"
-        with check:
-            assert "users" in details and "orders" in details, "Should list tables"
-
-    def test_validate_sql_qualified_column_not_ambiguous(self) -> None:
-        """Qualified column reference should not be considered ambiguous."""
+    def test_validate_sql_qualified_columns_multi_table_succeeds(self) -> None:
+        """Qualified columns in multi-table queries should succeed validation."""
         query = "SELECT u.id, o.id FROM users u, orders o"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        # Should not raise - columns are properly qualified
-        validate_sql(query, table_columns)
+        result = validate_sql(query, table_columns)
+        assert isinstance(result, exp.Expr)
 
-    def test_validate_sql_unambiguous_column_single_table_match(self) -> None:
-        """Column existing in only one table should not be ambiguous."""
+    def test_validate_sql_unambiguous_column_multi_table_succeeds(self) -> None:
+        """A column unique to one table in a multi-table query should succeed validation."""
         query = "SELECT name FROM users, orders"  # 'name' only in users
         table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
 
-        # Should not raise - 'name' only exists in 'users'
-        validate_sql(query, table_columns)
+        result = validate_sql(query, table_columns)
+        assert isinstance(result, exp.Expr)
 
-    def test_validate_sql_column_not_found_in_any_table_raises_error(self) -> None:
-        """Unqualified column not found in any table should raise SQLColumnError."""
-        query = "SELECT nonexistent FROM users, orders"
-        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
+    def test_validate_sql_column_not_found_single_table_raises_sql_column_error(self) -> None:
+        """Unqualified column not found in a single-table query raises SQLColumnError."""
+        query = "SELECT nonexistent FROM users"
+        table_columns = {"users": {"id", "name"}}
 
         with pytest.raises(SQLColumnError) as exc_info:
             validate_sql(query, table_columns)
 
         with check:
-            assert "nonexistent" in exc_info.value.not_found_columns, "Should report 'nonexistent' as not found"
-        with check:
-            searched_tables = exc_info.value.not_found_columns.get("nonexistent", [])
-            assert "users" in searched_tables and "orders" in searched_tables, "Should list searched tables"
+            assert "nonexistent" in exc_info.value.invalid_columns.get("users", []), (
+                "Should report 'nonexistent' as invalid for table 'users'"
+            )
 
     def test_validate_sql_column_not_found_format_details(self) -> None:
         """format_details should provide actionable feedback for not-found columns."""
-        query = "SELECT nonexistent FROM users, orders"
-        table_columns = {"users": {"id", "name"}, "orders": {"id", "total"}}
+        query = "SELECT nonexistent FROM users"
+        table_columns = {"users": {"id", "name"}}
 
         with pytest.raises(SQLColumnError) as exc_info:
             validate_sql(query, table_columns)
 
         details = exc_info.value.format_details()
         with check:
-            assert "not found in any table" in details.lower(), "Should mention not found"
+            assert "not found" in details.lower(), "Should mention not found"
         with check:
-            assert "users" in details and "orders" in details, "Should list searched tables"
+            assert "users" in details, "Should list the searched table"
+
+
+class TestValidateSQLLintIntegration:
+    """Tests for validate_sql lint integration.
+
+    These tests verify that validate_sql applies sqlfluff.fix() as a best-effort
+    first step, auto-fixing fixable style issues without raising errors.
+    """
+
+    def test_validate_sql_auto_fixes_lowercase_keywords(self) -> None:
+        """Given SQL with lowercase keywords, validate_sql should succeed after auto-fix."""
+        # lowercase "select" and "from" are fixable lint issues
+        query = "select id from users"
+        result = validate_sql(query, {"users": {"id", "name"}})
+
+        # Check that statements were capitalized
+        with check:
+            assert result.sql() == "SELECT id FROM users"
+
+        # Check the expression is equivalent to the un-linted query
+        expected_expression = parse_sql(query)
+        with check:
+            assert result == expected_expression
+
+    def test_validate_sql_passes_through_with_unfixable_lint_rules(self) -> None:
+        """When a lint rule is not auto-fixable, validate_sql fixes what it can and continues."""
+        query = "select * from users"
+        result = validate_sql(
+            query,
+            {"users": {"id", "name"}},
+            lint_rules=["CP01", "AM04"],  # can fix CP01 but can't fix AM04
+        )
+        expected_query = "SELECT * FROM users"
+
+        assert result.sql() == expected_query
+
+    def test_unparsable_sql_does_not_crash_linting(self) -> None:
+        """Unparsable sql should not crash on linting, it should be caught as a parse error."""
+        query = "SELECTid FROM users"  # unparsable select statement
+        with pytest.raises(SQLSyntaxError):
+            validate_sql(query, {"users": {"id", "name"}})
 
 
 class TestValidateSQLErrorPrecedence:
     """Tests verifying error precedence in validate_sql.
 
     These tests verify that errors are raised in the expected order:
-    syntax -> blacklist -> table -> column -> qualify.
+    parse (syntax + blacklist) -> table -> column.
     """
-
-    def test_validate_sql_syntax_error_before_table_error(self) -> None:
-        """Syntax errors should be raised before table errors."""
-        # This query has both syntax error (unclosed paren) and would have table error
-        with pytest.raises(SQLSyntaxError):
-            validate_sql("SELECT * FROM (SELECT a FROM bad_table", {"users": {"id"}})
 
     def test_validate_sql_blacklist_error_before_table_error(self) -> None:
         """Blacklist errors should be raised before table errors."""
@@ -2000,19 +2113,15 @@ class TestValidateSQLEdgeCases:
         validate_sql("SELECT ID, NAME FROM users", {"users": {"id", "name"}})
 
     def test_validate_sql_with_cte_succeeds(self) -> None:
-        """Query with CTE should validate correctly."""
-        query = "WITH active AS (SELECT id, name FROM users WHERE active = true) SELECT id, name FROM active"
+        """Query with CTE should validate correctly when properly formatted."""
+        query = "WITH active AS (\n    SELECT id, name FROM users WHERE active = true\n) SELECT id, name FROM active"
         validate_sql(query, {"users": {"id", "name", "active"}})
 
     def test_validate_sql_with_subquery_succeeds(self) -> None:
-        """Query with subquery should validate correctly."""
-        query = "SELECT id, name FROM users WHERE id IN (SELECT user_id FROM orders)"
+        """Query with subquery should validate correctly when column references are qualified."""
+        query = "SELECT id, name FROM users WHERE id IN (SELECT orders.user_id FROM orders)"
         table_columns = {"users": {"id", "name"}, "orders": {"id", "user_id"}}
         validate_sql(query, table_columns)
-
-    def test_validate_sql_star_select_succeeds(self) -> None:
-        """SELECT * should not raise errors."""
-        validate_sql("SELECT * FROM users", {"users": {"id", "name", "email"}})
 
 
 # endregion

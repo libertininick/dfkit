@@ -155,7 +155,7 @@ uv run ruff check . \
 
 ### Run pre-commit hooks
 
-Files with changes
+Files with staged changes
 ```sh
 uv run prek run
 ```

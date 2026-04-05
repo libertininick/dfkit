@@ -599,7 +599,7 @@ class TestExceptionsCatchableByBaseClass:
         ]
         for error_type in error_types:
             try:
-                self._simulate_exceptions(error_type)
+                _raise_simulated_exception(error_type)
             except SQLValidationError as e:
                 errors_caught.append(type(e).__name__)
                 # Verify query is accessible on all caught exceptions
@@ -607,7 +607,7 @@ class TestExceptionsCatchableByBaseClass:
                     assert e.query == "SELECT * FROM users", f"Query should be accessible on {type(e).__name__}"
 
         with check:
-            assert len(errors_caught) == 4, "All four exceptions should be caught"
+            assert len(errors_caught) == 4, f"All four exceptions should be caught; caught {errors_caught}"
         with check:
             assert "SQLSyntaxError" in errors_caught, "SQLSyntaxError should be caught by base class"
         with check:
@@ -640,33 +640,31 @@ class TestExceptionsCatchableByBaseClass:
         with check:
             assert not isinstance(syntax_error, SQLColumnError), "SQLSyntaxError should not be caught by SQLColumnError"
 
-    @staticmethod
-    def _simulate_exceptions(error_type: str) -> None:
-        """Simulate different SQL validation errors.
 
-        Raises a SQLValidationError subclass (SQLSyntaxError, SQLTableError,
-        SQLColumnError, or SQLBlacklistedCommandError) based on error_type.
+def _raise_simulated_exception(error_type: str) -> None:
+    """Raise a SQLValidationError subclass instance for a given error type string.
 
-        Args:
-            error_type (str): The type of error to simulate. One of "syntax", "table",
-                "column", or "blacklist".
+    Args:
+        error_type (str): The type of error to create. One of "syntax", "table",
+            "column", or "blacklist".
 
-        Raises:
-            SQLSyntaxError: When error_type is "syntax".
-            SQLTableError: When error_type is "table".
-            SQLColumnError: When error_type is "column".
-            SQLBlacklistedCommandError: When error_type is "blacklist".
-            ValueError: If an unknown error_type is provided.
-        """
-        query = "SELECT * FROM users"
-        if error_type == "syntax":
-            raise SQLSyntaxError("Syntax error", query=query, errors=[{"description": "Invalid token", "line": 1}])
-        if error_type == "table":
-            raise SQLTableError("Table not found", query=query, invalid_tables=["users"])
-        if error_type == "column":
-            raise SQLColumnError("Column not found", query=query, invalid_columns={"users": ["id"]})
-        if error_type == "blacklist":
-            raise SQLBlacklistedCommandError(
-                "Blacklisted command", query=query, command_type="DELETE", blacklist={"DELETE", "DROP"}
-            )
+    Raises:
+        SQLSyntaxError:
+        SQLTableError:
+        SQLColumnError:
+        SQLBlacklistedCommandError:
+        ValueError: If error_type is not a recognized value.
+    """
+    query = "SELECT * FROM users"
+    if error_type == "syntax":
+        raise SQLSyntaxError("Syntax error", query=query, errors=[{"description": "Invalid token", "line": 1}])
+    elif error_type == "table":
+        raise SQLTableError("Table not found", query=query, invalid_tables=["users"])
+    elif error_type == "column":
+        raise SQLColumnError("Column not found", query=query, invalid_columns={"users": ["id"]})
+    elif error_type == "blacklist":
+        raise SQLBlacklistedCommandError(
+            "Blacklisted command", query=query, command_type="DELETE", blacklist={"DELETE", "DROP"}
+        )
+    else:
         raise ValueError(f"Unknown error_type: {error_type}")
