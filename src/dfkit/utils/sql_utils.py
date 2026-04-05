@@ -280,6 +280,7 @@ def validate_sql(
             query,
             dialect="ansi" if dialect is None else dialect,
             exclude_rules=list(_supported_lint_rules() - set(lint_rules)),
+            fix_even_unparsable=False,
         )
 
     expression = parse_sql(query, dialect=dialect, blacklist=blacklist)
