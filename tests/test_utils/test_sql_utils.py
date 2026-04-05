@@ -1716,7 +1716,7 @@ class TestValidateSQLSuccessCases:
         """SELECT alias that shares a name with a real column should not raise.
 
         When a SELECT alias has the same name as a real table column (e.g.,
-        ``ROUND(age, 0) AS age``), an unqualified reference to that name in
+        `ROUND(age, 0) AS age`), an unqualified reference to that name in
         ORDER BY should match the alias and be skipped rather than validated
         against the schema.
         """
@@ -1734,7 +1734,7 @@ class TestValidateSQLSuccessCases:
     def test_validate_sql_alias_used_in_group_by_succeeds(self) -> None:
         """SELECT alias referenced in GROUP BY should not raise.
 
-        An alias defined in the SELECT clause (e.g., ``order_year``) used
+        An alias defined in the SELECT clause (e.g., `order_year`) used
         directly in a GROUP BY clause should be treated as a valid alias
         reference and skipped during column validation.
         """
@@ -2044,25 +2044,33 @@ class TestValidateSQLLintIntegration:
         # lowercase "select" and "from" are fixable lint issues
         query = "select id from users"
         result = validate_sql(query, {"users": {"id", "name"}})
-        expected_expression = parse_sql(query)
-        assert result == expected_expression
 
-    def test_validate_sql_lint_then_column_validation_succeeds(self) -> None:
-        """Given SQL with fixable lint issues and valid columns, both checks should pass."""
-        # lowercase keywords are auto-fixed, then column validation passes
-        result = validate_sql(
-            "select id, name from users where id > 0",
-            {"users": {"id", "name", "email"}},
-        )
-        assert isinstance(result, exp.Expr)
+        # Check that statements were capitalized
+        with check:
+            assert result.sql() == "SELECT id FROM users"
+
+        # Check the expression is equivalent to the un-linted query
+        expected_expression = parse_sql(query)
+        with check:
+            assert result == expected_expression
 
     def test_validate_sql_passes_through_with_unfixable_lint_rules(self) -> None:
-        """When a lint rule is not auto-fixable, validate_sql continues with the original query."""
-        query = "SELECT * FROM users;"  # AM04 is not auto-fixable
-        result = validate_sql(query, {"users": {"id", "name"}}, lint_rules=["AM04"])  # can't fix AM04
-        expected_expression = parse_sql(query)
+        """When a lint rule is not auto-fixable, validate_sql fixes what it can and continues."""
+        query = "select * from users"
+        result = validate_sql(
+            query,
+            {"users": {"id", "name"}},
+            lint_rules=["CP01", "AM04"],  # can fix CP01 but can't fix AM04
+        )
+        expected_query = "SELECT * FROM users"
 
-        assert result == expected_expression
+        assert result.sql() == expected_query
+
+    def test_unparsable_sql_does_not_crash_linting(self) -> None:
+        """Unparsable sql should not crash on linting, it should be caught as a parse error."""
+        query = "SELECTid FROM users"  # unparsable select statement
+        with pytest.raises(SQLSyntaxError):
+            validate_sql(query, {"users": {"id", "name"}})
 
 
 class TestValidateSQLErrorPrecedence:
