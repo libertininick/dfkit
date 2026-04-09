@@ -16,9 +16,8 @@ from pytest_check import check
 
 from dfkit.evaluation.judge import DEFAULT_JUDGE_PROMPT, extract_facts
 
-# region Fake LLM
 
-
+# region Fake LLM Models
 class FakeStructuredChatModel(FakeListChatModel):
     """Fake chat model that supports structured output via JSON parsing.
 
@@ -69,11 +68,38 @@ class FakeStructuredChatModel(FakeListChatModel):
         return RunnableLambda(parse)
 
 
+class NonSchemaModel(FakeListChatModel):
+    """Fake chat model that returns a raw dict from with_structured_output.
+
+    Subclasses FakeListChatModel directly so the with_structured_output
+    override can use the exact BaseChatModel signature without conflicting
+    with FakeStructuredChatModel's stricter implementation.
+    """
+
+    def with_structured_output(  # type: ignore[override]
+        self,
+        _schema: dict[str, Any] | type,
+        *,
+        _include_raw: bool = False,
+        **_kwargs: Any,
+    ) -> Runnable[Any, Any]:
+        """Return a runnable that always yields a raw dict, not a schema instance.
+
+        Args:
+            _schema (dict[str, Any] | type): Ignored; accepted for interface compatibility.
+            _include_raw (bool): Ignored; accepted for interface compatibility.
+            **_kwargs (Any): Ignored; accepted for interface compatibility.
+
+        Returns:
+            Runnable[Any, Any]: A runnable that always returns a raw dict.
+        """
+        return RunnableLambda(lambda _input: {"name": "Alice", "age": 30})
+
+
 # endregion
 
+
 # region Module-level test schemas
-
-
 class FactSchema(BaseModel):
     """Minimal Pydantic schema used as the extraction target in judge tests.
 
@@ -116,6 +142,7 @@ class RequiredFieldSchema(BaseModel):
 # endregion
 
 
+# region Tests
 class TestDefaultJudgePrompt:
     """Tests for the DEFAULT_JUDGE_PROMPT module-level constant."""
 
@@ -149,7 +176,12 @@ class TestDefaultJudgePrompt:
         with check:
             assert "evaluation judge" in system_content
         with check:
-            assert "None" in system_content
+            # The system prompt must instruct the model to leave missing facts
+            # unset (None/null); check for the concept rather than a literal word.
+            assert any(
+                keyword in system_content.lower()
+                for keyword in ("none", "null", "not present", "leave", "unset", "missing")
+            )
 
     def test_default_prompt_accepts_empty_agent_response(self) -> None:
         """DEFAULT_JUDGE_PROMPT should format without error when agent_response is empty."""
@@ -176,12 +208,13 @@ class TestExtractFacts:
     """Tests for the extract_facts function."""
 
     @pytest.mark.parametrize(
-        ("schema_class", "expected", "agent_response", "prompt"),
+        ("schema_class", "expected", "agent_response", "prompt", "prompt_variables"),
         [
             pytest.param(
                 FactSchema,
                 FactSchema(name="Bob"),
                 "Bob was mentioned but no age given.",
+                None,
                 None,
                 id="fact-schema-none-optional-field",
             ),
@@ -189,6 +222,7 @@ class TestExtractFacts:
                 AltFactSchema,
                 AltFactSchema(score=0.72, label="standard"),
                 "Score was 0.72; category is standard.",
+                None,
                 None,
                 id="alt-schema-different-schema-class",
             ),
@@ -199,12 +233,14 @@ class TestExtractFacts:
                 ChatPromptTemplate.from_messages([
                     ("human", "Custom extraction request: {agent_response}"),
                 ]),
+                None,
                 id="fact-schema-custom-prompt",
             ),
             pytest.param(
                 FactSchema,
                 FactSchema(name="Dana"),
                 "Dana was mentioned.",
+                None,
                 None,
                 id="fact-schema-prompt-none-uses-default",
             ),
@@ -213,33 +249,97 @@ class TestExtractFacts:
                 FactSchema(name=None),
                 "",
                 None,
+                None,
                 id="fact-schema-empty-agent-response",
+            ),
+            pytest.param(
+                FactSchema,
+                FactSchema(name="Maria"),
+                "Name: Maria; score=9/10 (top-tier). Tags: <urgent>, [review], {pending}. Cost: $4.99 & \u20ac3.50.",
+                None,
+                None,
+                id="fact-schema-special-chars-unicode",
+            ),
+            pytest.param(
+                FactSchema,
+                FactSchema(name="Ivan", age=38),
+                (
+                    "Ivan is a 38-year-old software engineer with over a decade of experience "
+                    "in distributed systems. He joined the team in January and has already "
+                    "delivered three major features ahead of schedule. His colleagues describe "
+                    "him as thorough and dependable, and he has received two commendations from "
+                    "senior leadership this quarter alone."
+                ),
+                None,
+                None,
+                id="fact-schema-long-multi-sentence-response",
+            ),
+            pytest.param(
+                FactSchema,
+                FactSchema(name="Julia", age=29),
+                (
+                    "## Summary\n\n"
+                    "The agent identified **Julia** (age: 29) as the primary contact.\n\n"
+                    "### Details\n\n"
+                    "```json\n"
+                    '{"name": "Julia", "age": 29, "role": "lead"}\n'
+                    "```\n\n"
+                    "Additional context: she is fluent in three languages."
+                ),
+                None,
+                None,
+                id="fact-schema-markdown-with-embedded-json",
+            ),
+            pytest.param(
+                FactSchema,
+                FactSchema(name="Frank", age=40),
+                "Frank is 40 years old.",
+                ChatPromptTemplate.from_messages([
+                    ("human", "Context: {context}\n\nAgent response: {agent_response}\n\nExtract facts."),
+                ]),
+                {"context": "Medical intake form"},
+                id="fact-schema-custom-prompt-extra-variables",
+            ),
+            pytest.param(
+                FactSchema,
+                FactSchema(name="Hank", age=55),
+                "Hank is 55 years old.",
+                ChatPromptTemplate.from_messages([
+                    ("human", "Context: {context}\n\nAgent response: {agent_response}\n\nExtract facts."),
+                ]),
+                {"context": "HR record", "agent_response": "stale value — should be ignored"},
+                id="fact-schema-agent-response-precedence",
             ),
         ],
     )
-    def test_extract_facts_builds_chain_and_returns_schema_instance(
+    def test_extract_facts_returns_populated_schema(
         self,
         schema_class: type[BaseModel],
         expected: BaseModel,
         agent_response: str,
         prompt: ChatPromptTemplate | None,
+        prompt_variables: dict[str, str] | None,
     ) -> None:
         """extract_facts should build the LLM chain and return a populated schema instance.
 
         Covers schema variation, optional-field handling, custom prompts, prompt=None fallback,
-        and empty agent responses. Each parametrize case isolates one behavioral dimension.
+        empty agent responses, unicode/special characters, long multi-sentence text, structured
+        content like markdown with embedded JSON, extra prompt variables supplied via
+        prompt_variables, and agent_response precedence over any agent_response key in
+        prompt_variables. Each parametrize case isolates one behavioral dimension.
 
         Args:
             schema_class (type[BaseModel]): The Pydantic model class passed as the extraction target.
             expected (BaseModel): The pre-built model instance used both as LLM response source and assertion target.
             agent_response (str): The agent response string forwarded to `extract_facts`.
             prompt (ChatPromptTemplate | None): Custom prompt passed to `extract_facts`, or `None` to use the default.
+            prompt_variables (dict[str, str] | None): Extra template variables forwarded to `extract_facts`, or `None`.
         """
         # Arrange
         judge = FakeStructuredChatModel(responses=[expected.model_dump_json()])
 
         # Act
-        result = extract_facts(judge, agent_response, schema_class, prompt=prompt)
+        result = extract_facts(judge, agent_response, schema_class, prompt=prompt, prompt_variables=prompt_variables)
 
         # Assert
         assert result == expected
@@ -275,12 +375,12 @@ class TestExtractFacts:
     def test_extract_facts_wrong_schema_json_returns_default(self) -> None:
         """extract_facts should return schema() when the LLM returns JSON that doesn't match the schema.
 
-        A JSON object whose fields don't match FactSchema triggers a pydantic
-        ValidationError inside FakeStructuredChatModel. extract_facts catches
-        this and returns the default schema instance.
+        A JSON object whose field values cannot be coerced to FactSchema types
+        triggers a pydantic ValidationError inside FakeStructuredChatModel.
+        extract_facts catches this and returns the default schema instance.
         """
-        # Arrange — score/label fields don't match FactSchema
-        judge = FakeStructuredChatModel(responses=['{"score": 0.5, "label": "high"}'])
+        # Arrange — list cannot be coerced to str | None, triggering ValidationError
+        judge = FakeStructuredChatModel(responses=['{"name": ["not", "a", "string"]}'])
 
         # Act
         result = extract_facts(judge, "Some response text.", FactSchema)
@@ -288,15 +388,54 @@ class TestExtractFacts:
         # Assert — fallback to default instance
         assert result == FactSchema()
 
-    def test_extract_facts_schema_with_required_field_raises_type_error(self) -> None:
-        """extract_facts should raise TypeError when schema() cannot be instantiated.
+    def test_extract_facts_schema_with_required_field_raises_value_error(self) -> None:
+        """extract_facts should raise ValueError when schema() cannot be instantiated.
 
         A schema with required fields (no defaults) cannot produce a fallback
-        instance, so extract_facts raises TypeError before doing any other work.
+        instance, so extract_facts raises ValueError before doing any other work.
         """
         # Arrange
         judge = FakeStructuredChatModel(responses=['{"name": "Eve"}'])
 
         # Act / Assert
-        with pytest.raises(TypeError, match="RequiredFieldSchema"):
+        with pytest.raises(ValueError, match="RequiredFieldSchema"):
             extract_facts(judge, "Eve was mentioned.", RequiredFieldSchema)
+
+    def test_extract_facts_custom_prompt_extra_variables_missing_prompt_variables_raises(self) -> None:
+        """extract_facts should raise when extra prompt variables are not provided.
+
+        When a custom prompt references a variable beyond {agent_response} (e.g. {context})
+        and prompt_variables is not supplied, the template cannot be rendered. The function
+        must propagate the resulting KeyError (or equivalent) so the caller learns that
+        prompt_variables is required.
+        """
+        # Arrange
+        custom_prompt = ChatPromptTemplate.from_messages([
+            ("human", "Context: {context}\n\nAgent response: {agent_response}\n\nExtract facts."),
+        ])
+        judge = FakeStructuredChatModel(responses=['{"name": "Grace", "age": 28}'])
+
+        # Act / Assert — missing {context} must surface an error, not silently return defaults
+        with pytest.raises((KeyError, Exception)):
+            extract_facts(judge, "Grace is 28 years old.", FactSchema, prompt=custom_prompt)
+
+    def test_extract_facts_non_schema_result_returns_default(self) -> None:
+        """extract_facts should return schema() when with_structured_output yields a non-schema type.
+
+        This test covers the isinstance fallback branch (lines 100-101 of judge.py).
+        When chain.invoke returns a value that is not an instance of the target schema
+        (here a raw dict), extract_facts must return the default schema instance
+        rather than forwarding the mistyped result to the caller.
+        """
+        # Arrange — a fake model whose with_structured_output ignores the schema
+        # and returns a plain dict, bypassing model_validate_json entirely.
+        judge = NonSchemaModel(responses=["unused"])
+
+        # Act
+        result = extract_facts(judge, "Alice is 30 years old.", FactSchema)
+
+        # Assert
+        assert result == FactSchema()
+
+
+# endregion

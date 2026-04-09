@@ -50,6 +50,7 @@ def extract_facts[R: BaseModel](
     schema: type[R],
     *,
     prompt: ChatPromptTemplate | None = None,
+    prompt_variables: dict[str, str] | None = None,
 ) -> R:
     """Extract structured facts from an agent response using a judge LLM.
 
@@ -70,21 +71,25 @@ def extract_facts[R: BaseModel](
         prompt (ChatPromptTemplate | None): Optional custom prompt template.
             Must accept an `agent_response` input variable.  When `None`,
             `DEFAULT_JUDGE_PROMPT` is used.
+        prompt_variables (dict[str, str] | None): Optional additional template
+            variables required by a custom `prompt` beyond `agent_response`.
+            Values for `agent_response` in this dict are ignored — the explicit
+            `agent_response` parameter always takes precedence.
 
     Returns:
         R: A populated instance of `schema` containing the facts extracted
             from `agent_response`, or a default instance (`schema()`) if the
-            LLM could not produce a valid extraction.
+            LLM output fails Pydantic validation against `schema`.
 
     Raises:
-        TypeError: If `schema` cannot be instantiated with no arguments,
-            meaning one or more fields are missing default values.
-        ValueError: If `prompt` does not contain an `agent_response` input variable.
+        ValueError: If `schema` cannot be instantiated with no arguments
+            (one or more fields are missing default values), or if `prompt`
+            does not contain an `agent_response` input variable.
     """
     try:
-        schema()
-    except Exception as exc:
-        raise TypeError(
+        default_result = schema()
+    except ValidationError as exc:
+        raise ValueError(
             f"{schema.__name__} cannot be instantiated with no arguments. All schema fields must have default values."
         ) from exc
 
@@ -93,14 +98,15 @@ def extract_facts[R: BaseModel](
         raise ValueError(
             f"Custom prompt must contain an 'agent_response' input variable, got: {prompt.input_variables!r}"
         )
-    structured_judge = judge.with_structured_output(schema)
-    chain = prompt | structured_judge
+
+    invoke_vars = {**(prompt_variables or {}), "agent_response": agent_response}
+    chain = prompt | judge.with_structured_output(schema)
     try:
-        result = chain.invoke({"agent_response": agent_response})
+        result = chain.invoke(invoke_vars)
         if not isinstance(result, schema):
-            return schema()
+            return default_result
     except ValidationError:
-        return schema()
+        return default_result
 
     return result
 
