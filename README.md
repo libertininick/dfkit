@@ -93,6 +93,43 @@ The agent will automatically choose between SQL queries and decision tree
 analysis based on the question. Decision trees are useful for identifying
 key drivers, segmenting data, and understanding feature importance.
 
+## Configuring chat models
+
+[`src/dfkit/chat_models_config.py`](src/dfkit/chat_models_config.py) provides
+a small helper layer for loading API keys and initializing chat models with
+sensible defaults. It is shared across the examples, evals, and notebooks in
+this repo.
+
+It exposes three things:
+
+- `APIKeys` — a `pydantic-settings` class that loads `ANTHROPIC` and `OPENAI`
+  keys from a local `.env` file (see [`APIKeys`](src/dfkit/chat_models_config.py#L14)).
+- `ModelName` — a `StrEnum` of supported models, covering Anthropic Claude
+  (Haiku, Sonnet, Opus) and OpenAI GPT (nano, mini, full). See
+  [`ModelName`](src/dfkit/chat_models_config.py#L26).
+- `get_chat_model` — a convenience wrapper around LangChain's
+  `init_chat_model` that picks the right API key based on the selected model
+  and applies defaults for `timeout`, `max_retries`, and `temperature`. See
+  [`get_chat_model`](src/dfkit/chat_models_config.py#L50).
+
+Create a `.env` file at the project root with your keys:
+
+```sh
+ANTHROPIC=sk-ant-...
+OPENAI=sk-...
+```
+
+Then initialize a model:
+
+```python
+from dfkit.chat_models_config import ModelName, get_chat_model
+
+model = get_chat_model(model_name=ModelName.CLAUDE_HAIKU)
+```
+
+Any additional keyword arguments are forwarded to `init_chat_model`, so you
+can override provider-specific settings as needed.
+
 ## Examples
 
 See the [`examples/`](examples/) directory for complete, runnable demos including Jupyter notebooks and sample datasets.
