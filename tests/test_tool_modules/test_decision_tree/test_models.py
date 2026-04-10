@@ -76,7 +76,7 @@ class TestPredicate:
         predicate_value: float | str | set[float] | set[str] = {"a", "b"} if is_membership_operator else 1.0
 
         # Act
-        predicate = Predicate(variable="x", operator=operator, value=predicate_value)  # type: ignore[arg-type]
+        predicate = Predicate(variable="x", operator=operator, value=predicate_value)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert predicate.operator == operator
@@ -85,7 +85,7 @@ class TestPredicate:
         """An operator not in the Literal set should raise a ValidationError."""
         # Arrange / Act / Assert
         with pytest.raises(ValidationError):
-            Predicate(variable="x", operator="~=", value=1.0)  # type: ignore[arg-type]
+            Predicate(variable="x", operator="~=", value=1.0)  # ty: ignore[invalid-argument-type]
 
     # endregion
 
@@ -106,7 +106,7 @@ class TestPredicate:
 
         # Act / Assert
         with pytest.raises(ValidationError):
-            Predicate(variable="x", operator=operator, value=scalar_value)  # type: ignore[arg-type]
+            Predicate(variable="x", operator=operator, value=scalar_value)  # ty: ignore[invalid-argument-type]
 
     @pytest.mark.parametrize("operator", ["in", "not in"])
     def test_membership_operator_with_string_scalar_raises_validation_error(self, operator: str) -> None:
@@ -123,7 +123,7 @@ class TestPredicate:
 
         # Act / Assert
         with pytest.raises(ValidationError):
-            Predicate(variable="x", operator=operator, value=string_value)  # type: ignore[arg-type]
+            Predicate(variable="x", operator=operator, value=string_value)  # ty: ignore[invalid-argument-type]
 
     @pytest.mark.parametrize("operator", [">", ">=", "<", "<=", "==", "!="])
     def test_scalar_operator_with_set_value_raises_validation_error(self, operator: str) -> None:
@@ -140,7 +140,7 @@ class TestPredicate:
 
         # Act / Assert
         with pytest.raises(ValidationError):
-            Predicate(variable="x", operator=operator, value=set_value)  # type: ignore[arg-type]
+            Predicate(variable="x", operator=operator, value=set_value)  # ty: ignore[invalid-argument-type]
 
     @pytest.mark.parametrize("operator", ["in", "not in"])
     def test_membership_operator_with_set_value_accepted(self, operator: str) -> None:
@@ -156,7 +156,7 @@ class TestPredicate:
         set_value: set[str] = {"x", "y"}
 
         # Act
-        predicate = Predicate(variable="category", operator=operator, value=set_value)  # type: ignore[arg-type]
+        predicate = Predicate(variable="category", operator=operator, value=set_value)  # ty: ignore[invalid-argument-type]
 
         # Assert
         with check:
@@ -616,7 +616,7 @@ class TestDecisionTreeRule:
         """
         # Arrange / Act / Assert
         with pytest.raises(ValidationError, match="confidence"):
-            ClassificationRule(  # type: ignore[call-arg]
+            ClassificationRule(  # ty: ignore[missing-argument]
                 task="classification",
                 predicates=[Predicate(variable="product_category", operator="==", value="electronics")],
                 prediction="medium_value",
@@ -630,7 +630,7 @@ class TestDecisionTreeRule:
         """
         # Arrange / Act / Assert
         with pytest.raises(ValidationError, match="std"):
-            RegressionRule(  # type: ignore[call-arg]
+            RegressionRule(  # ty: ignore[missing-argument]
                 task="regression",
                 predicates=[Predicate(variable="years_experience", operator=">", value=5.0)],
                 prediction=95_000.0,
@@ -1033,7 +1033,7 @@ class TestDecisionTreeResult:
         with pytest.raises(ValidationError, match="task"):
             DecisionTreeResult(
                 target="segment",
-                task="clustering",  # type: ignore[arg-type]
+                task="clustering",  # ty: ignore[invalid-argument-type]
                 features=["age", "income"],
                 rules=[
                     ClassificationRule(

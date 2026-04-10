@@ -79,10 +79,10 @@ class TestToolCallError:
     def test_tool_call_error_required_fields(self) -> None:
         """Given missing required fields, When instantiated, Then raises ValidationError."""
         with pytest.raises(ValidationError):
-            ToolCallError(error_type="SomeError")  # type: ignore[call-arg]
+            ToolCallError(error_type="SomeError")  # ty: ignore[missing-argument]
 
         with pytest.raises(ValidationError):
-            ToolCallError(message="Some message")  # type: ignore[call-arg]
+            ToolCallError(message="Some message")  # ty: ignore[missing-argument]
 
     def test_tool_call_error_has_field_descriptions(self) -> None:
         """Given ToolCallError model, When schema inspected, Then fields have descriptions."""

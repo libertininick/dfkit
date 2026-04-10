@@ -1091,7 +1091,7 @@ class TestEnableLoggingFiltering:
         monkeypatch.setattr(sys, "stderr", captured_stderr)
 
         # Arrange - enable_logging with the parametrized level
-        handle = enable_logging(level=level)  # type: ignore[arg-type]
+        handle = enable_logging(level=level)  # ty: ignore[invalid-argument-type]
 
         # Act - perform operations that generate DEBUG, INFO, TOOL_CALL, and WARNING logs
         toolkit = DataFrameToolkit()
@@ -1173,7 +1173,7 @@ class TestEnableLoggingFormatting:
         monkeypatch.setattr(sys, "stderr", captured_stderr)
 
         # Arrange - enable_logging with specified or default format
-        handle = enable_logging() if log_format is None else enable_logging(log_format=log_format)  # type: ignore[arg-type]
+        handle = enable_logging() if log_format is None else enable_logging(log_format=log_format)  # ty: ignore[invalid-argument-type]
 
         # Act - perform operation that produces TOOL_CALL-level logs
         toolkit = DataFrameToolkit()

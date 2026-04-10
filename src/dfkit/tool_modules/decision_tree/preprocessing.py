@@ -178,7 +178,7 @@ def infer_task(
         DecisionTreeTask: The detected task type.
     """
     if task_override in {"classification", "regression"}:
-        return task_override  # type: ignore[return-value]
+        return task_override  # ty: ignore[invalid-return-type]
 
     column_type = classify_column(series.dtype)
     if column_type in {"boolean", "categorical"}:

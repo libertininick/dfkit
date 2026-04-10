@@ -215,7 +215,7 @@ class TestRelationshipStrength:
             value (str): One of the four valid RelationshipStrength literal values.
         """
         # Arrange / Act
-        model = FieldModel(relationship_strength=value)  # type: ignore[arg-type]
+        model = FieldModel(relationship_strength=value)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert model.relationship_strength == value
@@ -240,7 +240,7 @@ class TestRelationshipStrength:
         """
         # Arrange / Act / Assert
         with pytest.raises(ValidationError):
-            FieldModel(relationship_strength=value)  # type: ignore[arg-type]
+            FieldModel(relationship_strength=value)  # ty: ignore[invalid-argument-type]
 
 
 class TestConfounders:
@@ -283,7 +283,7 @@ class TestConfounders:
         """Confounders should reject a list whose elements are not strings."""
         # Arrange / Act / Assert
         with pytest.raises(ValidationError):
-            FieldModel(confounders=[1, 2, 3])  # type: ignore[arg-type]
+            FieldModel(confounders=[1, 2, 3])  # ty: ignore[invalid-argument-type]
 
     def test_empty_string_element_raises_validation_error(self) -> None:
         """Confounders should reject a list that contains an empty string."""
@@ -471,7 +471,7 @@ class TestNestedInStructures:
         data = {1: 0.5}
 
         # Act
-        model = NestedFieldModel(correlation_by_month=data)  # type: ignore[arg-type]
+        model = NestedFieldModel(correlation_by_month=data)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert model.correlation_by_month[1] == pytest.approx(0.5)
@@ -482,7 +482,7 @@ class TestNestedInStructures:
         data = [0.5]
 
         # Act
-        model = NestedFieldModel(importance_scores=data)  # type: ignore[arg-type]
+        model = NestedFieldModel(importance_scores=data)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert model.importance_scores[0] == pytest.approx(0.5)
@@ -493,7 +493,7 @@ class TestNestedInStructures:
         data = {"feature_a": 0.5}
 
         # Act
-        model = NestedFieldModel(probabilities_by_name=data)  # type: ignore[arg-type]
+        model = NestedFieldModel(probabilities_by_name=data)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert model.probabilities_by_name["feature_a"] == pytest.approx(0.5)
@@ -515,7 +515,7 @@ class TestNestedInStructures:
         data = {"group_a": ["age", "income"]}
 
         # Act
-        model = NestedFieldModel(confounder_groups=data)  # type: ignore[arg-type]
+        model = NestedFieldModel(confounder_groups=data)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert model.confounder_groups["group_a"] == ["age", "income"]
@@ -526,7 +526,7 @@ class TestNestedInStructures:
         data = [1.2]
 
         # Act
-        model = NestedFieldModel(metric_history=data)  # type: ignore[arg-type]
+        model = NestedFieldModel(metric_history=data)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert model.metric_history[0] == pytest.approx(1.2)
@@ -537,7 +537,7 @@ class TestNestedInStructures:
         data = {"t_test": 1.96}
 
         # Act
-        model = NestedFieldModel(metrics_by_test=data)  # type: ignore[arg-type]
+        model = NestedFieldModel(metrics_by_test=data)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert model.metrics_by_test["t_test"] == pytest.approx(1.96)
@@ -548,7 +548,7 @@ class TestNestedInStructures:
         data = [10]
 
         # Act
-        model = NestedFieldModel(sample_counts=data)  # type: ignore[arg-type]
+        model = NestedFieldModel(sample_counts=data)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert model.sample_counts[0] == 10
@@ -559,7 +559,7 @@ class TestNestedInStructures:
         data = {"feature_a": 2}
 
         # Act
-        model = NestedFieldModel(ranks_by_feature=data)  # type: ignore[arg-type]
+        model = NestedFieldModel(ranks_by_feature=data)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert model.ranks_by_feature["feature_a"] == 2
@@ -622,7 +622,7 @@ class TestNestedInStructures:
         """
         # Arrange / Act / Assert
         with pytest.raises(ValidationError):
-            NestedFieldModel(strengths=[bad_value])  # type: ignore[list-item]
+            NestedFieldModel(strengths=[bad_value])  # ty: ignore[invalid-argument-type]
 
     @pytest.mark.parametrize(
         "bad_value",

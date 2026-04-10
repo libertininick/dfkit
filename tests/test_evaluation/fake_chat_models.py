@@ -69,7 +69,7 @@ class NonSchemaModel(FakeListChatModel):
     with FakeStructuredChatModel's stricter implementation.
     """
 
-    def with_structured_output(  # type: ignore[override]
+    def with_structured_output(  # ty: ignore[invalid-method-override]
         self,
         _schema: dict[str, Any] | type,
         *,

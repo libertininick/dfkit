@@ -359,7 +359,7 @@ class TestEvaluateAgent:
         class _FailingJudge(FakeStructuredChatModel):
             """FakeStructuredChatModel whose with_structured_output always raises."""
 
-            def with_structured_output(  # type: ignore[override]
+            def with_structured_output(  # ty: ignore[invalid-method-override]
                 self,
                 _schema: dict | type,
                 *,

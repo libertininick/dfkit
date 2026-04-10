@@ -113,7 +113,7 @@ class Predicate(BaseModel):
         """
         if self.operator in {"in", "not in"}:
             # At runtime self.value is always set[float] or set[str] (enforced by validator).
-            sorted_values = ", ".join(str(v) for v in sorted(self.value))  # type: ignore[arg-type]
+            sorted_values = ", ".join(str(v) for v in sorted(self.value))  # ty: ignore[invalid-argument-type]
             return f"{self.variable} {self.operator} {{{sorted_values}}}"
         return f"{self.variable} {self.operator} {self.value}"
 

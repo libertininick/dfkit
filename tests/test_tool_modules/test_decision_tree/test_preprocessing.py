@@ -52,7 +52,7 @@ class TestClassifyColumn:
     def test_boolean_type_returns_boolean(self) -> None:
         """Boolean dtype should classify as 'boolean'."""
         # Act
-        column_type = classify_column(pl.Boolean)  # type: ignore[arg-type]
+        column_type = classify_column(pl.Boolean)  # ty: ignore[invalid-argument-type]
 
         # Assert
         assert column_type == "boolean"
