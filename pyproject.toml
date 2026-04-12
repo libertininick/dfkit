@@ -126,7 +126,7 @@ ignore = [
   "ISC001",   # Ignore single-line-implicit-string-concatenation for ruff format
   "FBT003",   # Allow boolean pos values in func calls, like `dict.get(... True)`
 ]
-per-file-ignores = {"**/{tests}/*" = [ 
+per-file-ignores = {"**/{tests}/*" = [
   # Tests can use magic values, assertions, and relative imports
   "PLR2004", "S101", "TID252",
   # Tests can import private names
@@ -134,8 +134,11 @@ per-file-ignores = {"**/{tests}/*" = [
   # Test classes can have methods that don't use self. Don't need to decorate as static.
   "PLR6301",
   # Test classes can have as many public methods as needed
-  "PLR0904", 
+  "PLR0904",
 
+], "evals/*" = [
+  # Eval scripts import all harness symbols up-front; unused until later phases
+  "F401",
 ]}
 extend-unsafe-fixes = ["E", "F401"]
 
